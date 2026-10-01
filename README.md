@@ -17,9 +17,8 @@ ignore the system proxy. Needs administrator rights.
 - **Pinning warning:** the UI shows when the program rejects the certificate.
 
 ## Setup
-```
-python -m pip install --user mitmproxy
-```
+Needs Python 3 (`winget install Python.Python.3.13`). If mitmproxy is missing,
+the first capture installs it with `pip install --user mitmproxy`.
 
 ## Usage
 Double-click `tlspeek.cmd`, choose **1** and accept the UAC prompt. The UI opens in your browser.

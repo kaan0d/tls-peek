@@ -34,8 +34,23 @@ if (-not $admin) {
 
 $mitmdump = Find-Exe "mitmdump.exe"
 if (-not $mitmdump) {
-  Write-Host "mitmdump not found. To install:  python -m pip install --user mitmproxy" -ForegroundColor Red
-  Read-Host "Press Enter to exit"; exit 1
+  # Skips the Microsoft Store "python" stub, which exists but cannot run code.
+  $py = "py", "python" | Where-Object {
+    try { (Get-Command $_ -ErrorAction Stop) -and ((& $_ -c "print(1)" 2>$null) -eq "1") } catch { $false }
+  } | Select-Object -First 1
+  if (-not $py) {
+    Write-Host "Python not found. Install it first:  winget install Python.Python.3.13" -ForegroundColor Red
+    Read-Host "Press Enter to exit"; exit 1
+  }
+  Write-Host "mitmdump not found. Installing mitmproxy (one time)..." -ForegroundColor Cyan
+  & $py -m pip install --user --upgrade mitmproxy
+  $scripts = & $py -c "import os, sysconfig; print(sysconfig.get_path('scripts', os.name + '_user'))"
+  $mitmdump = Join-Path $scripts "mitmdump.exe"
+  if (-not (Test-Path $mitmdump)) { $mitmdump = Find-Exe "mitmdump.exe" }
+  if (-not $mitmdump) {
+    Write-Host "Install failed. Try by hand:  $py -m pip install --user mitmproxy" -ForegroundColor Red
+    Read-Host "Press Enter to exit"; exit 1
+  }
 }
 
 # --- Fresh CA for this session: generate (no port needed) + trust ---
