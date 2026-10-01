@@ -222,7 +222,7 @@ dialog .top input[type=search] { flex: 1; }
 </header>
 <div id="stopped" hidden><div role="alertdialog" aria-labelledby="stopped-title">
   <h2 id="stopped-title">Stopped</h2>
-  <p>The redacted HAR and the session file are in the <code>captures</code> folder, and the certificate is removed. You can close this tab.</p>
+  <p id="stopped-text">The redacted HAR and the session file are in the <code>captures</code> folder, and the certificate is removed. You can close this tab.</p>
 </div></div>
 <div id="filters">
   <input id="search" type="search" placeholder="Search URL, method, status…" aria-label="Search requests">
@@ -333,8 +333,16 @@ async function api(path, opts) {
 const post = (path, data) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 
 // --- state and polling ---
+let homeUrl = "";    // start page to return to (empty when started from the command line)
+let fileMode = false;
 function showState(s) {
   program = s.program;
+  homeUrl = s.home || "";
+  if (fileMode !== !!s.file) {
+    fileMode = !!s.file;
+    $("#stop").textContent = fileMode ? "Close session" : "Stop";
+    $("#stop").title = fileMode ? "Close this saved session" : "Stop capturing, save the HAR and remove the certificate";
+  }
   document.querySelectorAll(".live-only").forEach((el) => (el.hidden = !!s.file));
   document.querySelector(".file-only").hidden = !s.file;
   $("#file").textContent = s.file;
@@ -981,7 +989,7 @@ $("#apply").addEventListener("click", () => applyConfig());
 let stopTimer;
 $("#stop").addEventListener("click", async (e) => {
   const b = e.currentTarget;
-  if (!b.classList.contains("confirm")) {  // two clicks, so a stray click does not end the capture
+  if (!fileMode && !b.classList.contains("confirm")) {  // two clicks, so a stray click does not end the capture
     b.classList.add("confirm"); b.textContent = "Click to stop";
     stopTimer = setTimeout(() => { b.classList.remove("confirm"); b.textContent = "Stop"; }, 3000);
     return;
@@ -989,6 +997,12 @@ $("#stop").addEventListener("click", async (e) => {
   clearTimeout(stopTimer);
   try { await post("/api/stop", {}); } catch {}
   stopped = true;
+  if (homeUrl) {
+    $("#stopped-title").textContent = fileMode ? "Closed" : "Stopped";
+    $("#stopped-text").textContent = fileMode ? "Back to the start page…"
+      : "The session and its redacted HAR are saved and the certificate is removed. Back to the start page…";
+    setTimeout(() => location.href = homeUrl, fileMode ? 300 : 1500);
+  }
   $("#stopped").hidden = false;
   $("#status").className = "status off"; $("#status").textContent = "Stopped";
 });

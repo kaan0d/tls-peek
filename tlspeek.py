@@ -1,6 +1,7 @@
 """tls-peek: capture one Windows program's HTTPS traffic and inspect it in a web UI.
 
-  tlspeek.py [capture]      start a capture (asks for admin, opens the UI)
+  tlspeek.py                start page in the browser: start a capture, open saved sessions, clean up
+  tlspeek.py capture        start a capture right away (asks for admin, opens the UI)
   tlspeek.py open [FILE]    view a saved .mitm session (file dialog without FILE)
   tlspeek.py cleanup        untrust and delete the CA (only needed after a crash)
 
@@ -227,12 +228,14 @@ def auto_stop(settings):
 
 
 def cleanup():
+    """Untrusts every mitmproxy CA and deletes this folder's CA key; returns how many were removed."""
     removed = 0
     while removed < 10 and subprocess.run(["certutil", "-delstore", "Root", "mitmproxy"],
                                           capture_output=True).returncode == 0:
         removed += 1
     shutil.rmtree(CONFDIR, ignore_errors=True)
     print(f"Cleanup: removed {removed} trusted CA certificate(s), deleted {CONFDIR}.")
+    return removed
 
 
 def prune_captures(keep_days):
@@ -268,9 +271,15 @@ def on_console_close(event):
     return False
 
 
+def home_args():
+    """mitmproxy args: link the UI back to the start page it was opened from."""
+    home = flag("--home-port")
+    return ["--set", f"ui_home=http://127.0.0.1:{home}/"] if home else []
+
+
 def capture():
     settings = addon.read_settings()
-    port = int(settings.get("ui_port") or 8081)
+    port = int(flag("--port") or settings.get("ui_port") or 8081)
     if not port_free(port):
         fail(f"Port {port} is busy. Is tls-peek already running? Otherwise change ui_port in settings.json.")
 
@@ -305,7 +314,7 @@ def capture():
 
     CAPTURES.mkdir(exist_ok=True)
     session = CAPTURES / time.strftime("session-%Y%m%d-%H%M%S")
-    if not ELEVATED:  # started as admin directly, so nobody else opens the browser or shows a tray icon
+    if not ELEVATED and not flag("--home-port"):  # started as admin directly: nobody else opens the browser or tray
         threading.Thread(target=open_when_up, args=(port,), daemon=True).start()
         if tray_available():
             start_tray(port)
@@ -317,7 +326,7 @@ def capture():
         run_mitmdump([
             "--mode", f"local:{addon.NO_PROGRAM}", "--set", f"confdir={CONFDIR}", *auto_stop(settings),
             "--save-stream-file", f"{session}.mitm", "--set", f"ui_port={port}",
-            "--set", "stream_large_bodies=5m",
+            "--set", "stream_large_bodies=5m", *home_args(),
         ])
     finally:
         export_har(session)
@@ -334,32 +343,280 @@ def open_session(path):
         path = filedialog.askopenfilename(initialdir=CAPTURES, filetypes=[("mitmproxy session", "*.mitm")])
         if not path:
             return
-    port = free_port()
+    port = int(flag("--port") or free_port())
     threading.Thread(target=open_when_up, args=(port,), daemon=True).start()
     print(f"Viewing {path} at http://127.0.0.1:{port}. Stop with Ctrl+C.")
     with tempfile.TemporaryDirectory() as confdir:  # keeps the throwaway CA out of the home folder
         run_mitmdump(["-n", "-r", str(path), "--set", "keepserving=true", "--set", f"confdir={confdir}",
-                      *auto_stop(addon.read_settings()),
+                      *auto_stop(addon.read_settings()), *home_args(),
                       "--set", f"ui_port={port}", "--set", f"ui_file={path}"])
+
+
+
+# --- start page: the non-admin process that launches captures, viewers and cleanup ---
+
+def flag(name, default=None):
+    """Value of a --name VALUE command line flag."""
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
+
+
+def self_command(*args):
+    """Command line that runs this program (script or frozen exe) with args."""
+    base = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+    return base + [str(a) for a in args]
+
+
+def ca_trusted():
+    return subprocess.run(["certutil", "-store", "Root", "mitmproxy"], capture_output=True).returncode == 0
+
+
+def is_up(port):
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=0.5).close()
+        return True
+    except OSError:
+        return False
+
+
+class Home:
+    """State of the start page: at most one capture or saved-session viewer at a time."""
+
+    def __init__(self, port):
+        self.port = port
+        self.child = None      # {"kind", "port", "alive": callable, "file"}
+        self.icon = None
+        self.message = ""      # last result shown on the page (cleanup, errors)
+        self.started = time.time()
+        self.wait_for_tab = 120  # seconds to wait for a first page view before giving up
+        self.last_seen = None
+        self.bye_at = None
+        self.lock = threading.Lock()
+
+    def child_alive(self):
+        return self.child is not None and self.child["alive"]()
+
+    def sessions(self):
+        if not CAPTURES.exists():
+            return []
+        out = []
+        for p in sorted(CAPTURES.glob("*.mitm"), key=lambda p: p.stat().st_mtime, reverse=True):
+            st = p.stat()
+            out.append({"name": p.name, "size": st.st_size, "time": st.st_mtime,
+                        "har": p.with_suffix(".har").exists()})
+        return out
+
+    def status(self):
+        child = None
+        if self.child_alive():
+            c = self.child
+            child = {"kind": c["kind"], "port": c["port"], "file": c.get("file", ""), "up": is_up(c["port"])}
+        return {"child": child, "sessions": self.sessions(), "ca_trusted": ca_trusted(),
+                "ca_folder": CONFDIR.exists(), "message": self.message}
+
+    def session_path(self, name):
+        """A file in captures\\ by bare name; rejects anything that points elsewhere."""
+        p = (CAPTURES / name).resolve()
+        if p.parent != CAPTURES.resolve() or p.suffix not in (".mitm", ".har") or not p.exists():
+            raise ValueError("no such session")
+        return p
+
+    def start_capture(self):
+        with self.lock:
+            if self.child_alive():
+                raise ValueError("a capture or session view is already open")
+            port = free_port()
+            tray = tray_available()
+            args = f"capture --port {port} --home-port {self.port}" + (" --hide-console" if tray else "")
+            handle = relaunch_as_admin(args)
+            if not handle:
+                raise ValueError("Capture needs administrator permission; the prompt was declined.")
+            self.child = {"kind": "capture", "port": port, "alive": lambda: not exited(handle)}
+            self.icon = start_tray(port) if tray else None
+            self.message = ""
+
+    def open_session(self, name):
+        with self.lock:
+            if self.child_alive():
+                raise ValueError("a capture or session view is already open")
+            path = self.session_path(name)
+            port = free_port()
+            proc = subprocess.Popen(
+                self_command("open", path, "--no-browser", "--port", port, "--home-port", self.port,
+                             "--parent", os.getpid()),
+                creationflags=subprocess.CREATE_NO_WINDOW)
+            self.child = {"kind": "viewer", "port": port, "file": path.name, "alive": lambda: proc.poll() is None}
+            self.message = ""
+
+    def delete(self, name):
+        path = self.session_path(name)
+        for p in (path.with_suffix(".mitm"), path.with_suffix(".har")):
+            p.unlink(missing_ok=True)
+
+    def cleanup(self):
+        with self.lock:
+            if self.child_alive() and self.child["kind"] == "capture":
+                raise ValueError("stop the running capture first")
+            handle = relaunch_as_admin("cleanup --hide-console")
+            if not handle:
+                raise ValueError("Cleanup needs administrator permission; the prompt was declined.")
+            exited(handle, 60_000)
+            code = wintypes.DWORD()
+            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            n = code.value
+            self.message = (f"Removed {n} capture certificate(s) and the CA folder." if n
+                            else "No capture certificate was installed; the CA folder is removed.")
+
+    def seen(self, bye=False):
+        if bye:
+            self.bye_at = time.time()
+        else:
+            self.last_seen = time.time()
+
+    def should_exit(self):
+        """No capture or viewer running and no start page open (closed, or never opened)."""
+        if self.child_alive():
+            return False
+        now = time.time()
+        if self.last_seen is None:
+            return now - self.started > self.wait_for_tab
+        closed = self.bye_at is not None and self.bye_at >= self.last_seen and now - self.bye_at > 10
+        return closed or now - self.last_seen > int(addon.read_settings().get("auto_stop_seconds", 300) or 10 ** 9)
+
+    def tick(self):
+        """Called every second: tidy up after a child that ended."""
+        if self.child is not None and not self.child_alive():
+            self.child = None
+            # The tab normally comes back to the start page right away; if it does not
+            # (closed together with the capture), end tls-peek soon.
+            self.last_seen, self.bye_at = None, None
+            self.started, self.wait_for_tab = time.time(), 30
+            if self.icon:
+                self.icon.stop()
+                self.icon = None
+
+
+def make_home_handler(home):
+    from http.server import BaseHTTPRequestHandler
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def send(self, code, body, ctype="application/json", headers=()):
+            if not isinstance(body, bytes):
+                body = json.dumps(body).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            for k, v in headers:
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def allowed(self):
+            # Same guard as the capture UI: only requests addressed to our own origin (DNS rebinding).
+            ok = self.headers.get("Host") in (f"127.0.0.1:{home.port}", f"localhost:{home.port}")
+            if not ok:
+                self.send(403, {"error": "bad host"})
+            return ok
+
+        def do_GET(self):
+            if not self.allowed():
+                return
+            home.seen()
+            path, _, query = self.path.partition("?")
+            if path == "/":
+                self.send(200, (addon.HERE / "home.html").read_bytes(), "text/html; charset=utf-8")
+            elif path == "/api/home":
+                self.send(200, home.status())
+            elif path == "/api/file":
+                from urllib.parse import parse_qs
+                try:
+                    p = home.session_path(parse_qs(query).get("name", [""])[0])
+                except ValueError as e:
+                    return self.send(404, {"error": str(e)})
+                self.send(200, p.read_bytes(), "application/octet-stream",
+                          [("Content-Disposition", f'attachment; filename="{p.name}"')])
+            else:
+                self.send(404, {"error": "not found"})
+
+        def do_POST(self):
+            if not self.allowed():
+                return
+            if self.headers.get("Content-Type") != "application/json":  # forces a CORS preflight
+                return self.send(400, {"error": "bad request"})
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                if self.path == "/api/bye":
+                    home.seen(bye=True)
+                    return self.send(200, {})
+                home.seen()
+                if self.path == "/api/start-capture":
+                    home.start_capture()
+                elif self.path == "/api/open":
+                    home.open_session(body["name"])
+                elif self.path == "/api/delete":
+                    home.delete(body["name"])
+                elif self.path == "/api/cleanup":
+                    home.cleanup()
+                else:
+                    return self.send(404, {"error": "not found"})
+                self.send(200, home.status())
+            except Exception as e:
+                self.send(400, {"error": str(e)})
+
+    return Handler
+
+
+def run_home():
+    from http.server import ThreadingHTTPServer
+    port = int(flag("--port") or addon.read_settings().get("ui_port") or 8081)
+    if not port_free(port):
+        if is_up(port):  # probably tls-peek already running: just show it
+            if not NO_BROWSER:
+                webbrowser.open(f"http://127.0.0.1:{port}")
+            return
+        fail(f"Port {port} is busy. Change ui_port in settings.json.")
+    home = Home(port)
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_home_handler(home))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"tls-peek start page: http://127.0.0.1:{port}  (closing the page ends tls-peek)")
+    if not NO_BROWSER:
+        webbrowser.open(f"http://127.0.0.1:{port}")
+    if owns_console():
+        show_console(False)
+    try:
+        while not home.should_exit():
+            home.tick()
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    home.tick()
+    server.shutdown()
 
 
 def main():
     stop_with_parent()
-    flags_with_value = {"--parent"}
+    flags_with_value = {"--parent", "--port", "--home-port"}
     args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in flags_with_value]
-    cmd = args[0] if args else "capture"
+    cmd = args[0] if args else "home"
     if cmd.lower().endswith(".mitm"):
         open_session(cmd)
     elif cmd == "open":
         open_session(args[1] if len(args) > 1 else "")
+    elif cmd == "home":
+        run_home()
     elif cmd == "cleanup":
         if not is_admin():
             if not relaunch_as_admin("cleanup"):
                 fail("Cleanup needs administrator rights.")
             return
-        cleanup()
-        if ELEVATED:
+        if "--hide-console" in sys.argv:
+            show_console(False)
+        removed = cleanup()
+        if ELEVATED and "--hide-console" not in sys.argv:
             input("Press Enter to close")
+        sys.exit(removed)  # the start page reports this number
     elif cmd == "capture":
         capture()
     else:

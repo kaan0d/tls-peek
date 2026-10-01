@@ -1,7 +1,7 @@
 # ============================================================================
 #  bootstrap.ps1
 #  Makes sure Python, mitmproxy and the tray icon libraries are installed (installs them on first run),
-#  then runs tlspeek.py with the given arguments (capture / open / cleanup).
+#  then runs tlspeek.py with the given arguments (none = start page).
 #  Called by tlspeek.cmd. Does not need administrator rights.
 # ============================================================================
 param([Parameter(ValueFromRemainingArguments)] $rest)

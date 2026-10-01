@@ -9,6 +9,7 @@ administrator rights.
 > credentials and personal data: keep them private and delete them when done.
 
 ## Features
+- **Start page:** start a capture, open, download or delete saved sessions, and remove a leftover certificate.
 - **Per-program capture:** pick a running app (or type an `.exe` name); only its traffic is intercepted.
 - **Live control:** switch program and host filter, pause/resume, stop, all from the UI or the tray icon.
 - **Auto-stop:** closing the last UI tab stops the capture after 10 s (5 min without any tab as a fallback).
@@ -28,24 +29,26 @@ python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on f
 Or build a single `tlspeek.exe` that needs neither:
 ```
 pip install mitmproxy pystray pillow pyinstaller
-pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui.html;." --add-data "addon.py;." tlspeek.py
+pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui.html;." --add-data "home.html;." --add-data "addon.py;." tlspeek.py
 ```
 The exe lands in `dist\`. Put `settings.json` next to it (optional).
 
 ## Usage
-Double-click `tlspeek.cmd` (or `tlspeek.exe`) and accept the UAC prompt. The UI opens in
-your browser and a tray icon appears; the admin window hides behind it.
+Double-click `tlspeek.cmd` (or `tlspeek.exe`). The start page opens in your browser.
 
-1. Click **Program** and pick the app (tick **Background** for tray apps).
-2. Optionally set a host filter such as `api.example.com` and press **Apply**.
-3. Close and reopen the monitored program, then do the action. WinDivert only sees new connections.
-4. Press **Stop** (UI or tray), or just close the tab. The redacted HAR lands in `captures\` and the CA is removed.
+1. Click **Start capture** and accept the UAC prompt. A tray icon appears.
+2. Click **Program** and pick the app (tick **Background** for tray apps).
+3. Optionally set a host filter such as `api.example.com` and press **Apply**.
+4. Close and reopen the monitored program, then do the action. WinDivert only sees new connections.
+5. Press **Stop** (UI or tray). The redacted HAR lands in `captures\`, the CA is removed and the tab returns to the start page.
+
+Closing the start page with nothing running ends tls-peek.
 
 Tick rows (Ctrl/Shift-click for several) to compare two or export a selection.
 
 ```
-tlspeek.cmd                          menu: capture / open saved session / cleanup
-tlspeek.exe [capture]                start a capture
+tlspeek.cmd  /  tlspeek.exe          start page
+tlspeek.exe capture                  start a capture right away
 tlspeek.exe open [FILE.mitm]         view a saved session (or drop the file on the exe)
 tlspeek.exe cleanup                  untrust and delete the CA after a crash
 python tlspeek.py ...                same commands without the exe
@@ -63,7 +66,8 @@ Covers field-name matching and redacted HAR export, then runs the UI server and 
 change tracking, pending state, body search, the Host guard, live program switching,
 pause, edit-and-resend against a local echo server, Stop and auto-stop, bookmarks and
 notes surviving in the session file, decoders and sandboxed previews, HAR and Postman
-export, and that tray polling does not keep an unattended capture alive.
+export, that tray polling does not keep an unattended capture alive, that a capture stops
+with its starter, and the start page (sessions, path checks, open and close, exit).
 
 ## Limits
 - **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. The UI lists these hosts in one collapsible bar.
@@ -76,9 +80,10 @@ export, and that tray polling does not keep an unattended capture alive.
 
 ## Layout
 ```
-tlspeek.cmd        launcher menu
+tlspeek.cmd        launcher
 bootstrap.ps1      installs Python and the Python packages if missing, runs tlspeek.py
-tlspeek.py         capture / open / cleanup, CA handling, tray icon, HAR on exit
+tlspeek.py         start page server, capture / open / cleanup, CA handling, tray icon, HAR on exit
+home.html          start page
 addon.py           mitmproxy addon: UI server, flow tracking, redaction, decoders, export
 ui.html            web UI
 test_tlspeek.py    redaction and UI API checks

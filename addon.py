@@ -176,6 +176,7 @@ class TlsPeek:
         loader.add_option("redact", bool, False, "Mask credentials in flows (for HAR export).")
         loader.add_option("ui_port", int, 0, "Serve the tls-peek web UI on this port (0 = off).")
         loader.add_option("ui_file", str, "", "Session file shown read-only in the UI (open mode).")
+        loader.add_option("ui_home", str, "", "URL of the start page this UI returns to when stopped.")
         loader.add_option("ui_auto_stop", int, 0,
                           "Stop when no UI tab has been open for this many seconds (0 = never).")
 
@@ -330,6 +331,7 @@ class TlsPeek:
             "host_filter": self.host_text,
             "file": Path(ctx.options.ui_file).name if ctx.options.ui_file else "",
             "paused": self.paused,
+            "home": ctx.options.ui_home,
             "rejected": sorted(self.rejected.values(), key=lambda e: -e["last"]),
         }
 

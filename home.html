@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tls-peek</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fff; --line: #e3e6ea; --text: #1d2228; --muted: #6b7480;
+  --accent: #2f6fdf; --ok: #1f8a4c; --warn: #b7791f; --bad: #c43d3d; --sel: #e8f0fd;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c; --panel: #1c2026; --line: #2c323a; --text: #e3e7ec; --muted: #8b95a1;
+    --accent: #6c9ef5; --ok: #4cc283; --warn: #e0a84a; --bad: #ef6b6b; --sel: #24324a;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 16px; }
+h1 { font-size: 22px; margin: 0; }
+.lede { color: var(--muted); margin: 2px 0 8px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+button, a.button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 12px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover:not(:disabled), a.button:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, a.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 9px 18px; }
+button.danger.confirm { background: var(--bad); border-color: var(--bad); color: #fff; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.dot::before { content: "●"; margin-right: 6px; }
+.dot.ok::before { color: var(--ok); }
+.dot.warn::before { color: var(--warn); }
+.dot.live::before { color: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .dot.live::before { animation: none; } }
+#notice { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+#notice.error { border-color: var(--bad); color: var(--bad); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.actions { text-align: right; white-space: nowrap; }
+td.actions > * { margin-left: 4px; }
+.name { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.empty { color: var(--muted); padding: 8px 0; }
+@media (max-width: 600px) { .hide-narrow { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>tls-peek</h1>
+    <p class="lede">See the HTTPS requests one Windows program sends.</p>
+  </header>
+
+  <div id="notice" role="status" hidden></div>
+
+  <section aria-labelledby="cap-title">
+    <h2 id="cap-title">Capture</h2>
+    <div id="cap-idle" class="row">
+      <button id="start" class="primary" type="button">Start capture</button>
+      <p class="muted">Windows asks for administrator permission. You pick the program on the next page.</p>
+    </div>
+    <div id="cap-busy" class="row" hidden>
+      <span id="busy-text" class="dot live"></span>
+      <button id="go" type="button">Open</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="ses-title">
+    <h2 id="ses-title">Saved sessions</h2>
+    <table id="sessions" hidden>
+      <thead><tr><th>Captured</th><th class="num hide-narrow">Size</th><th class="hide-narrow">File</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p id="no-sessions" class="empty" hidden>No saved sessions yet. Every capture is saved here.</p>
+  </section>
+
+  <section aria-labelledby="ca-title">
+    <h2 id="ca-title">Certificate</h2>
+    <div class="row">
+      <span id="ca-text"></span>
+      <button id="cleanup" type="button">Remove certificate</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
+let status = null;
+let waitingFor = null;  // "capture" | "viewer" while we wait to move into it
+
+async function call(path, data) {
+  const opts = data === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
+  const r = await fetch(path, opts);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+function notice(text, error = false) {
+  $("#notice").hidden = !text;
+  $("#notice").textContent = text;
+  $("#notice").classList.toggle("error", error);
+}
+
+function render(s) {
+  status = s;
+  const child = s.child;
+  $("#cap-idle").hidden = !!child;
+  $("#cap-busy").hidden = !child;
+  if (child) {
+    $("#busy-text").textContent = child.kind === "capture"
+      ? (child.up ? "A capture is running." : "Starting the capture…")
+      : `Viewing ${child.file}.`;
+    $("#go").disabled = !child.up;
+    // move into the capture / viewer we just started as soon as it answers
+    if (waitingFor === child.kind && child.up) location.href = `http://127.0.0.1:${child.port}/`;
+  }
+  const tbody = $("#sessions tbody");
+  $("#sessions").hidden = !s.sessions.length;
+  $("#no-sessions").hidden = !!s.sessions.length;
+  tbody.innerHTML = s.sessions.map((x) => `<tr>
+    <td>${new Date(x.time * 1000).toLocaleString()}</td>
+    <td class="num hide-narrow">${fmtSize(x.size)}</td>
+    <td class="name hide-narrow">${esc(x.name)}</td>
+    <td class="actions">
+      <button type="button" data-open="${esc(x.name)}" ${child ? "disabled" : ""}>Open</button>
+      ${x.har ? `<a class="button" href="/api/file?name=${encodeURIComponent(x.name.replace(/\.mitm$/, ".har"))}" title="Redacted HAR">HAR</a>` : ""}
+      <button type="button" class="danger" data-delete="${esc(x.name)}">Delete</button>
+    </td></tr>`).join("");
+  const capRunning = child?.kind === "capture";
+  $("#ca-text").className = "dot " + (s.ca_trusted ? "warn" : "ok");
+  $("#ca-text").textContent = s.ca_trusted
+    ? (capRunning ? "Trusted while the capture runs; it is removed when the capture stops."
+                  : "A capture certificate is still trusted (left from a crash).")
+    : "No capture certificate is trusted." + (s.ca_folder ? " A leftover CA folder exists." : "");
+  $("#cleanup").disabled = capRunning || (!s.ca_trusted && !s.ca_folder);
+  if (s.message && !waitingFor) notice(s.message);
+}
+
+async function poll() {
+  try { render(await call("/api/home")); }
+  catch { notice("tls-peek is not running any more. Start it again to continue.", true); return; }
+  setTimeout(poll, 1500);
+}
+
+$("#start").addEventListener("click", async () => {
+  $("#start").disabled = true;
+  notice("Waiting for administrator permission…");
+  try {
+    waitingFor = "capture";
+    render(await call("/api/start-capture", {}));
+    notice("Starting the capture…");
+  } catch (err) { waitingFor = null; notice(err.message, true); }
+  $("#start").disabled = false;
+});
+
+$("#go").addEventListener("click", () => { if (status?.child) location.href = `http://127.0.0.1:${status.child.port}/`; });
+
+$("#sessions").addEventListener("click", async (e) => {
+  const open = e.target.closest("[data-open]"), del = e.target.closest("[data-delete]");
+  try {
+    if (open) {
+      waitingFor = "viewer";
+      notice("Opening the session…");
+      render(await call("/api/open", { name: open.dataset.open }));
+    } else if (del) {
+      if (!del.classList.contains("confirm")) {  // two clicks, so a stray click keeps the file
+        del.classList.add("confirm"); del.textContent = "Click to delete";
+        setTimeout(() => { del.classList.remove("confirm"); del.textContent = "Delete"; }, 3000);
+        return;
+      }
+      render(await call("/api/delete", { name: del.dataset.delete }));
+    }
+  } catch (err) { waitingFor = null; notice(err.message, true); }
+});
+
+$("#cleanup").addEventListener("click", async () => {
+  $("#cleanup").disabled = true;
+  notice("Waiting for administrator permission…");
+  try { render(await call("/api/cleanup", {})); }
+  catch (err) { notice(err.message, true); }
+});
+
+// Closing the start page (with nothing running) ends tls-peek; a refresh comes back within seconds.
+addEventListener("pagehide", () => navigator.sendBeacon("/api/bye", new Blob(["{}"], { type: "application/json" })));
+poll();
+</script>
+</body>
+</html>

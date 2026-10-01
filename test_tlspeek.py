@@ -313,3 +313,44 @@ h = tlspeek.kernel32.OpenProcess(tlspeek.SYNCHRONIZE, False, short.pid)
 assert h and not tlspeek.exited(h)
 assert tlspeek.exited(h, 5000)
 print("wait ok")
+
+# --- start page: list, open and close a saved session, delete, refuse paths outside captures\ ---
+tlspeek.CAPTURES.mkdir(exist_ok=True)
+fake = tlspeek.CAPTURES / f"session-test-{int(time.time())}.mitm"
+fake.write_bytes((tmp / "c.mitm").read_bytes())
+port = tlspeek.free_port()
+home = subprocess.Popen([sys.executable, here / "tlspeek.py", "--no-browser", "--port", str(port)], stdout=subprocess.DEVNULL)
+try:
+    for _ in range(50):
+        try:
+            st = call("/api/home")[1]
+            break
+        except OSError:
+            time.sleep(0.2)
+    assert any(x["name"] == fake.name for x in st["sessions"]) and st["child"] is None, st
+    assert post("/api/open", {"name": "../settings.json"})[0] == 400
+    assert post("/api/delete", {"name": "..\tlspeek.py"})[0] == 400
+    status, st = post("/api/open", {"name": fake.name})
+    assert status == 200 and st["child"]["kind"] == "viewer", st
+    viewer_port = st["child"]["port"]
+    for _ in range(50):
+        if call("/api/home")[1]["child"]["up"]:
+            break
+        time.sleep(0.3)
+    home_port, port = port, viewer_port
+    state = call("/api/state")[1]
+    assert state["file"] == fake.name and state["home"] == f"http://127.0.0.1:{home_port}/", state
+    post("/api/stop", {})  # "Close session" in the viewer
+    port = home_port
+    for _ in range(30):
+        if call("/api/home")[1]["child"] is None:
+            break
+        time.sleep(0.3)
+    assert call("/api/home")[1]["child"] is None, "the viewer did not end"
+    assert post("/api/delete", {"name": fake.name})[0] == 200 and not fake.exists()
+    post("/api/bye", {})  # the start page closes with nothing running: tls-peek ends
+    assert exits_within(home, 20), "tls-peek kept running after its start page closed"
+finally:
+    home.kill()
+    fake.unlink(missing_ok=True)
+print("home ok")
