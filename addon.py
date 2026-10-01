@@ -290,7 +290,8 @@ class TlsPeek:
                 msg.headers.clear()
                 for k, v in edits.get("headers", []):
                     msg.headers.add(k, v)
-                msg.text = edits.get("body", "")
+                if edits.get("body") is not None:  # None: binary or too big to edit, keep as is
+                    msg.text = edits["body"]
                 f.metadata.setdefault("tlspeek_edited", []).append(phase)
             # kill() alone would leave the proxy waiting on the hold forever: release, then kill.
             f.resume()
@@ -425,12 +426,13 @@ class TlsPeek:
             if msg is None:
                 return None
             body = body_text(msg)
+            editable = body is not None and msg.raw_content is not None and len(body) <= MAX_BODY
             if msg.raw_content is None:
                 body = "<body streamed, not stored>"
             elif body is None:
                 body = f"<binary, {len(msg.raw_content)} bytes: pick a decoder such as protobuf or hex dump>"
             return {"headers": list(msg.headers.items(multi=True)),
-                    "body": body[:MAX_BODY], "truncated": len(body) > MAX_BODY}
+                    "body": body[:MAX_BODY], "truncated": len(body) > MAX_BODY, "editable": editable}
 
         ws = None
         if f.websocket:

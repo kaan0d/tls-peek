@@ -16,6 +16,7 @@ administrator rights.
 - **Request list:** pending requests, status/type/host/bookmark filters, URL or body search, sortable and resizable columns, waterfall timeline.
 - **Request detail:** headers, query, pretty JSON, WebSocket messages, image and sandboxed HTML previews.
 - **Decoders:** JWTs found in headers, URL or body; Base64; mitmproxy's views (protobuf, gRPC, msgpack, hex, ...).
+- **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version.
 - **Work with requests:** bookmarks and notes, edit and resend, compare two as a diff, copy as cURL/PowerShell/Python.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table for the requests shown.
 - **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default.
@@ -67,7 +68,8 @@ change tracking, pending state, body search, the Host guard, live program switch
 pause, edit-and-resend against a local echo server, Stop and auto-stop, bookmarks and
 notes surviving in the session file, decoders and sandboxed previews, HAR and Postman
 export, that tray polling does not keep an unattended capture alive, that a capture stops
-with its starter, and the start page (sessions, path checks, open and close, exit).
+with its starter, the start page (sessions, path checks, open and close, exit), and intercept
+on real proxied calls: the caller waits, gets an edited request and a faked response, drops, and release-all.
 
 ## Limits
 - **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. The UI lists these hosts in one collapsible bar.
@@ -76,7 +78,8 @@ with its starter, and the start page (sessions, path checks, open and close, exi
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
 - **Redaction is by field name** (auth, token, password, key, user, code, ...). Free-text
   personal data in bodies is not masked. Check exports before you share them.
-- **WebSocket flows** can be viewed but not resent.
+- **WebSocket flows** can be viewed but not resent or intercepted.
+- **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.
 
 ## Layout
 ```

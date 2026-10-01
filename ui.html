@@ -118,6 +118,27 @@ table.stats tbody tr { cursor: pointer; }
 .ex small { color: var(--muted); }
 .ex .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 #ex-error { color: var(--bad); margin-right: auto; }
+#icpt-btn[aria-pressed="true"], #held-btn { border-color: var(--warn); color: var(--warn); }
+#held-btn { font-weight: 600; }
+.held { color: var(--warn); font-weight: 600; }
+tbody tr.is-held { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.tl-bar.held { background: var(--warn); }
+.hold-box { margin: 12px; border: 1px solid var(--warn); border-radius: 8px; padding: 12px; display: grid; gap: 8px;
+  background: color-mix(in srgb, var(--warn) 6%, var(--panel)); }
+.hold-box p { margin: 0; }
+.hold-box label { color: var(--muted); font-size: 12px; }
+.hold-box textarea, .hold-box input { font-family: var(--mono); font-size: 12px; width: 100%; }
+.hold-box textarea { resize: vertical; }
+.hold-box .row { display: flex; gap: 8px; }
+.hold-box .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hold-box .actions .spacer { flex: 1; }
+.hold-box .danger { color: var(--bad); }
+#icpt-dlg form { padding: 14px; display: grid; gap: 10px; }
+#icpt-dlg label { display: flex; gap: 8px; align-items: center; }
+#icpt-dlg .field-col { display: grid; gap: 4px; }
+#icpt-dlg .field-col span { color: var(--muted); font-size: 12px; }
+#icpt-dlg .actions { display: flex; gap: 8px; justify-content: flex-end; }
+#icpt-dlg p { margin: 0; color: var(--muted); font-size: 12px; }
 .same { margin: 0 12px; color: var(--muted); font-style: italic; }
 th { position: sticky; top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
   border-bottom: 1px solid var(--line); padding: 5px 8px; z-index: 1; }
@@ -212,7 +233,10 @@ dialog .top input[type=search] { flex: 1; }
     <button id="apply" class="primary" type="button">Apply</button>
   </div>
   <div class="field file-only" hidden><label>Viewing</label><span id="file"></span></div>
-  <button id="pause" class="live-only" type="button" aria-pressed="false" title="Stop intercepting new connections and recording">Pause</button>
+  <button id="pause" class="live-only" type="button" aria-pressed="false" title="Let new connections through untouched and stop recording">Pause</button>
+  <button id="icpt-btn" class="live-only" type="button" aria-pressed="false" title="Hold matching requests or responses so you can edit them before the program gets them">Intercept</button>
+  <button id="held-btn" type="button" hidden title="Show the first held request"></button>
+  <button id="release-all" type="button" hidden>Continue all</button>
   <span id="status" class="status">Connecting…</span>
   <span class="spacer"></span>
   <button id="stats-btn" type="button" title="Counts, sizes and timings for the requests shown">Stats</button>
@@ -263,6 +287,19 @@ dialog .top input[type=search] { flex: 1; }
     <button id="proc-close" type="button">Cancel</button>
   </div>
   <div id="procs"></div>
+</dialog>
+
+<dialog id="icpt-dlg" aria-label="Intercept">
+  <form method="dialog">
+    <label><input type="checkbox" id="ic-on"> <b>Hold matching traffic</b></label>
+    <p>The program waits while something is held, so release it quickly: some programs give up after a timeout.</p>
+    <div class="field-col"><span>URL contains (empty = everything)</span><input id="ic-url" placeholder="api.example.com/login" autocomplete="off"></div>
+    <div class="field-col"><span>Method</span>
+      <select id="ic-method"><option value="">Any</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
+    <label><input type="checkbox" id="ic-req" checked> Hold requests (before they reach the server)</label>
+    <label><input type="checkbox" id="ic-resp"> Hold responses (before the program gets them)</label>
+    <div class="actions"><button type="button" id="ic-cancel">Cancel</button><button type="button" id="ic-save" class="primary">Save</button></div>
+  </form>
 </dialog>
 
 <dialog id="export-dlg" aria-label="Export">
@@ -349,6 +386,7 @@ function showState(s) {
   $("#program-btn").innerHTML = s.program ? `<span>${esc(s.program)}</span>` : "<span>Pick program…</span>";
   if (document.activeElement !== $("#host")) $("#host").value = s.host_filter;
   paused = s.paused;
+  showIntercept(s);
   $("#pause").textContent = paused ? "Resume" : "Pause";
   $("#pause").setAttribute("aria-pressed", paused);
   const n = s.rejected.length;
@@ -383,7 +421,7 @@ async function poll() {
 
 // --- filters ---
 // Arrays, not objects: object keys like "2" would sort before "all".
-const STATUS = [["all", "All"], ["2", "2xx"], ["3", "3xx"], ["4", "4xx"], ["5", "5xx"], ["pending", "Pending"], ["error", "Error"]];
+const STATUS = [["all", "All"], ["2", "2xx"], ["3", "3xx"], ["4", "4xx"], ["5", "5xx"], ["pending", "Pending"], ["held", "Held"], ["error", "Error"]];
 const TYPES = [["all", "All"], ["json", "JSON"], ["html", "HTML"], ["js", "JS"], ["css", "CSS"], ["image", "Image"], ["ws", "WS"], ["other", "Other"]];
 
 function typeOf(f) {
@@ -424,6 +462,7 @@ function matches(f) {
   if (filter.type !== "all" && typeOf(f) !== filter.type) return false;
   if (filter.status === "pending" && f.state !== "pending") return false;
   if (filter.status === "error" && f.state !== "error") return false;
+  if (filter.status === "held" && f.state !== "held") return false;
   if (/^\d$/.test(filter.status) && String(f.status)[0] !== filter.status) return false;
   const q = $("#search").value.trim().toLowerCase();
   if (!q) return true;
@@ -449,7 +488,7 @@ const COLUMNS = [
   { key: "pick", label: "", width: 30 },
   { key: "star", label: "", width: 28 },
   { key: "method", label: "Method", width: 70, sort: (f) => f.method },
-  { key: "status", label: "Status", width: 64, sort: (f) => f.state === "error" ? 1000 : f.status ?? 0 },
+  { key: "status", label: "Status", width: 76, sort: (f) => f.state === "error" ? 1000 : f.status ?? 0 },
   { key: "host", label: "Host", width: 160, sort: (f) => f.host },
   { key: "path", label: "Path", width: null, sort: pathOf },
   { key: "type", label: "Type", width: 120, sort: (f) => f.type },
@@ -546,6 +585,7 @@ const visible = () => {
 };
 
 function statusCell(f) {
+  if (f.state === "held") return `<span class="held" title="Held: the program is waiting">⏸ ${f.held === "response" ? f.status : "held"}</span>`;
   if (f.state === "error") return `<span class="err" title="${esc(f.error)}">ERR</span>`;
   if (f.state === "pending") return `<span class="pending" title="Waiting for response">···</span>`;
   return `<span class="s${String(f.status)[0]}">${f.status}</span>`;
@@ -585,7 +625,8 @@ function render() {
     host: (f) => `<td title="${esc(f.host)}">${esc(f.host)}</td>`,
     path: (f) => {
       const tags = (f.replay ? `<span class="tag">resent</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
-        + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "");
+        + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "")
+        + (f.edited.length ? `<span class="tag" title="Edited while held: ${f.edited.join(", ")}">edited</span>` : "");
       return `<td title="${esc(f.url)}">${tags}${esc(pathOf(f))}</td>`;
     },
     type: (f) => `<td class="muted">${esc(f.type)}</td>`,
@@ -595,7 +636,7 @@ function render() {
   };
   const cols = shownCols();
   $("#rows").innerHTML = list.map((f) =>
-    `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}">${cols.map((c) => cells[c.key](f)).join("")}</tr>`
+    `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}${f.state === "held" ? " is-held" : ""}">${cols.map((c) => cells[c.key](f)).join("")}</tr>`
   ).join("");
   if (atBottom) box.scrollTop = box.scrollHeight;
   if ($("#pick-all")) $("#pick-all").checked = list.length > 0 && list.every((f) => picked.has(f.id));
@@ -779,8 +820,11 @@ async function loadDetail() {
     $("#detail").innerHTML = `<div class="empty">${esc(err.message)}</div>`;
     return;
   }
-  // Don't close the copy menu or interrupt typing a note.
+  // Don't close the copy menu, interrupt typing a note or wipe edits to a held request.
   if (document.querySelector("details.copy[open]") || document.activeElement?.id === "note") return;
+  const box = document.querySelector(".hold-box");
+  if (box && current.summary.state === "held" && box.dataset.phase === current.summary.held
+      && box.dataset.id === String(current.summary.id)) return;
   const top = $("#detail").scrollTop;
   renderDetail();
   $("#detail").scrollTop = top;
@@ -885,7 +929,7 @@ function renderDetail() {
       </div></details>
       <button id="close-detail" type="button" title="Close (Esc)">Close</button>
     </div>
-    <div class="url">${esc(s.method)} ${esc(s.url)}</div>
+    <div class="url">${esc(s.method)} ${esc(s.url)}</div>${s.state === "held" ? holdHtml(s) : ""}
     <textarea id="note" rows="1" placeholder="Note (saved with the session)…" aria-label="Note"></textarea>${body}`;
   $("#note").value = s.note;
   let noteTimer;
@@ -896,6 +940,7 @@ function renderDetail() {
   $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
   $("#resend-btn").addEventListener("click", openResend);
+  if (s.state === "held") wireHold(s);
   $("#close-detail").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll(".body-out").forEach(fillBody);
   $("#detail").querySelectorAll(".view-pick").forEach((sel) => sel.addEventListener("change", () => {
@@ -906,6 +951,96 @@ function renderDetail() {
     // sandbox="" blocks scripts; the server's CSP also blocks every external load.
     b.outerHTML = `<iframe class="preview" sandbox="" src="${b.dataset.src}" title="Page preview"></iframe>`;
   }));
+}
+
+// --- intercept: rule dialog, held badge, editor ---
+let icpt = { enabled: false, url: "", method: "", request: true, response: false };
+let heldCount = 0;
+const heldSince = new Map();  // id -> when we first saw it held
+
+function showIntercept(s) {
+  icpt = s.intercept || icpt;
+  heldCount = s.held || 0;
+  $("#icpt-btn").setAttribute("aria-pressed", icpt.enabled);
+  $("#icpt-btn").textContent = icpt.enabled ? "Intercept: on" : "Intercept";
+  $("#held-btn").hidden = $("#release-all").hidden = heldCount === 0;
+  $("#held-btn").textContent = `⏸ ${heldCount} held`;
+  document.title = heldCount ? `(${heldCount} held) tls-peek` : "tls-peek";
+}
+
+$("#icpt-btn").addEventListener("click", () => {
+  $("#ic-on").checked = icpt.enabled || !icpt.url;  // opening it usually means "turn it on"
+  $("#ic-url").value = icpt.url;
+  $("#ic-method").value = icpt.method;
+  $("#ic-req").checked = icpt.request;
+  $("#ic-resp").checked = icpt.response;
+  $("#icpt-dlg").showModal();
+});
+$("#ic-cancel").addEventListener("click", () => $("#icpt-dlg").close());
+$("#ic-save").addEventListener("click", async () => {
+  try {
+    showState(await post("/api/intercept", { enabled: $("#ic-on").checked, url: $("#ic-url").value,
+      method: $("#ic-method").value, request: $("#ic-req").checked, response: $("#ic-resp").checked }));
+    applyError = "";
+  } catch (err) { applyError = "Could not set intercept: " + err.message; }
+  $("#icpt-dlg").close();
+});
+$("#held-btn").addEventListener("click", () => {
+  const first = [...flows.values()].find((f) => f.state === "held");
+  if (first) { select(first.id); document.querySelector(`tr[data-id="${first.id}"]`)?.scrollIntoView({ block: "nearest" }); }
+});
+$("#release-all").addEventListener("click", () => post("/api/release-all", {}).catch(() => {}));
+
+function holdHtml(s) {
+  const phase = s.held, msg = current[phase];
+  if (!heldSince.has(s.id)) heldSince.set(s.id, Date.now());
+  const headers = msg.headers.filter(([k]) => !/^content-length$/i.test(k)).map(([k, v]) => `${k}: ${v}`).join("\n");
+  const first = phase === "request"
+    ? `<div class="row"><input id="hd-method" value="${esc(s.method)}" aria-label="Method" style="flex: 0 0 90px"><input id="hd-url" value="${esc(s.url)}" aria-label="URL"></div>`
+    : `<div class="row"><input id="hd-status" value="${esc(s.status)}" aria-label="Status code" inputmode="numeric" style="flex: 0 0 90px"></div>`;
+  return `<div class="hold-box" data-phase="${phase}" data-id="${s.id}">
+    <p><b>${phase === "request" ? "Request held" : "Response held"}</b>, the program is waiting
+      <span class="muted" id="hd-age"></span>. Edit it, then continue, or drop it.</p>
+    ${first}
+    <label for="hd-headers">Headers (one "Name: value" per line)</label>
+    <textarea id="hd-headers" rows="6">${esc(headers)}</textarea>
+    <label for="hd-body">Body${msg.editable ? "" : " (binary or too large to edit here: it is sent unchanged)"}</label>
+    <textarea id="hd-body" rows="6" ${msg.editable ? "" : "disabled"}>${esc(msg.editable ? msg.body : "")}</textarea>
+    <div class="actions">
+      <button type="button" class="primary" id="hd-go">Continue</button>
+      <button type="button" id="hd-plain" title="Ignore the edits above">Continue unchanged</button>
+      <span class="spacer"></span>
+      <button type="button" class="danger" id="hd-drop" title="The program gets an error instead">Drop</button>
+    </div></div>`;
+}
+
+const parseHeaders = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+  const i = l.indexOf(":", l.startsWith(":") ? 1 : 0);
+  return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+});
+
+function wireHold(s) {
+  const phase = s.held, editable = current[phase].editable;
+  const tick = () => {
+    const el = $("#hd-age");
+    if (!el) return clearInterval(timer);
+    el.textContent = `(${Math.round((Date.now() - heldSince.get(s.id)) / 1000)} s)`;
+  };
+  const timer = setInterval(tick, 1000);
+  tick();
+  const release = async (extra) => {
+    try { await post("/api/release", { id: s.id, ...extra }); }
+    catch (err) { applyError = err.message; }
+    loadDetail();
+  };
+  $("#hd-go").addEventListener("click", () => {
+    const edits = { headers: parseHeaders($("#hd-headers").value), body: editable ? $("#hd-body").value : null };
+    if (phase === "request") Object.assign(edits, { method: $("#hd-method").value.trim(), url: $("#hd-url").value.trim() });
+    else edits.status = Number($("#hd-status").value);
+    release({ [phase]: edits });
+  });
+  $("#hd-plain").addEventListener("click", () => release({}));
+  $("#hd-drop").addEventListener("click", () => release({ drop: true }));
 }
 
 // --- copy as ---
