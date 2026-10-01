@@ -86,6 +86,14 @@ tbody tr.sel { background: var(--sel); }
 .star { border: 0; background: none; padding: 0 2px; color: var(--muted); font-size: 14px; line-height: 1; }
 .star[aria-pressed="true"] { color: var(--warn); }
 #marked-only[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
+.view-pick { font-size: 11px; padding: 1px 4px; margin-left: 8px; text-transform: none; letter-spacing: 0; }
+.preview { display: block; max-width: calc(100% - 24px); max-height: 360px; margin: 0 12px 12px;
+  background: repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 16px 16px; border: 1px solid var(--line); }
+iframe.preview { width: calc(100% - 24px); height: 360px; background: #fff; }
+.jwt { margin: 0 12px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.jwt summary { padding: 6px 10px; cursor: pointer; font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jwt pre { margin: 0 10px 10px; }
+.jwt .bad { color: var(--bad); }
 #note { display: block; width: calc(100% - 24px); margin: 8px 12px 0; resize: vertical; min-height: 34px; }
 .c-method { width: 64px; font-family: var(--mono); }
 .c-status { width: 58px; font-family: var(--mono); }
@@ -446,11 +454,60 @@ function prettyBody(msg) {
 
 const kv = (pairs) => pairs.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
 
-function messageHtml(msg, pending) {
+// --- decoders and previews ---
+let bodyView = "pretty";  // kept while moving between requests
+const VIEWS = ["pretty", "base64", "auto", "json", "protobuf", "grpc", "msgpack", "xml/html", "url-encoded",
+  "multipart form", "query", "javascript", "css", "hex dump", "raw"];
+const JWT = /eyJ[\w-]+\.eyJ[\w-]+\.[\w-]*/g;
+
+function b64decode(text) {
+  const clean = text.trim().replace(/-/g, "+").replace(/_/g, "/").replace(/\s+/g, "");
+  const bin = atob(clean + "=".repeat((4 - clean.length % 4) % 4));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+function jwtHtml(texts) {
+  const tokens = [...new Set(texts.flatMap((t) => String(t).match(JWT) || []))];
+  if (!tokens.length) return "";
+  return `<h3>JWT tokens</h3>` + tokens.map((tok) => {
+    try {
+      const [h, p] = tok.split(".").slice(0, 2).map((part) => JSON.parse(b64decode(part)));
+      const when = (k) => p[k] ? `${k}: ${new Date(p[k] * 1000).toLocaleString()}` : "";
+      const expired = p.exp && p.exp * 1000 < Date.now();
+      return `<details class="jwt"><summary>${esc(h.alg || "?")} · ${esc(p.sub || p.email || p.iss || "token")}
+        ${expired ? `<span class="bad">· expired</span>` : ""} · ${esc(tok.slice(0, 24))}…</summary>
+        <pre>${esc([when("iat"), when("exp")].filter(Boolean).join("\n"))}</pre>
+        <pre>${esc(JSON.stringify(h, null, 2))}</pre><pre>${esc(JSON.stringify(p, null, 2))}</pre></details>`;
+    } catch { return ""; }
+  }).join("");
+}
+
+function messageHtml(msg, pending, part) {
   if (!msg) return `<div class="empty">${pending ? "Waiting for the response…" : "No response" + (current.summary.error ? ": " + esc(current.summary.error) : "") + "."}</div>`;
-  const body = prettyBody(msg);
-  return `<h3>Headers</h3><div class="headers">${kv(msg.headers) || "<i>none</i>"}</div>
-    <h3>Body</h3>${body ? `<pre>${esc(body)}</pre>` : `<div class="headers"><i>empty</i></div>`}`;
+  const ctype = header(msg, "content-type");
+  const src = `/api/body/${current.summary.id}?part=${part}&seq=${seq}`;
+  let preview = "";
+  if (ctype.startsWith("image/")) preview = `<img class="preview" src="${src}" alt="Image preview">`;
+  else if (ctype.includes("html")) preview = `<button type="button" class="html-preview" data-src="${src}" style="margin: 0 12px 8px">Preview page</button>`;
+  const texts = [...msg.headers.map(([, v]) => v), msg.body, part === "request" ? current.summary.url : ""];
+  return `<h3>Headers</h3><div class="headers">${kv(msg.headers) || "<i>none</i>"}</div>${jwtHtml(texts)}
+    <h3>Body ${msg.body ? `<select class="view-pick" data-part="${part}" aria-label="Decode body as">
+      ${VIEWS.map((v) => `<option${v === bodyView ? " selected" : ""}>${v}</option>`).join("")}</select>` : ""}</h3>
+    ${preview}${msg.body ? `<pre class="body-out" data-part="${part}"></pre>` : `<div class="headers"><i>empty</i></div>`}`;
+}
+
+async function fillBody(pre) {
+  const part = pre.dataset.part, msg = current[part], id = current.summary.id;
+  if (bodyView === "pretty") { pre.textContent = prettyBody(msg); return; }
+  if (bodyView === "base64") {
+    try { pre.textContent = b64decode(msg.body); } catch { pre.textContent = "Not valid Base64."; }
+    return;
+  }
+  pre.textContent = "Decoding…";
+  try {
+    const r = await api(`/api/view/${id}?part=${part}&view=${encodeURIComponent(bodyView)}`);
+    if (current?.summary.id === id) pre.textContent = (r.text || "(empty)") + (r.truncated ? "\n… (truncated)" : "");
+  } catch (err) { pre.textContent = err.message; }
 }
 
 function wsHtml(msgs) {
@@ -467,8 +524,8 @@ function renderDetail() {
   let params = [];
   try { params = [...new URL(s.url).searchParams]; } catch {}
   const body = tab === "request"
-    ? (params.length ? `<h3>Query</h3><div class="headers">${kv(params)}</div>` : "") + messageHtml(current.request)
-    : tab === "response" ? messageHtml(current.response, s.state === "pending")
+    ? (params.length ? `<h3>Query</h3><div class="headers">${kv(params)}</div>` : "") + messageHtml(current.request, false, "request")
+    : tab === "response" ? messageHtml(current.response, s.state === "pending", "response")
     : wsHtml(current.websocket || []);
   $("#detail").innerHTML = `
     <div class="bar" role="tablist">
@@ -495,6 +552,15 @@ function renderDetail() {
   $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
   $("#resend-btn").addEventListener("click", openResend);
+  $("#detail").querySelectorAll(".body-out").forEach(fillBody);
+  $("#detail").querySelectorAll(".view-pick").forEach((sel) => sel.addEventListener("change", () => {
+    bodyView = sel.value;
+    fillBody(sel.closest("h3").parentElement.querySelector(`.body-out[data-part="${sel.dataset.part}"]`));
+  }));
+  $("#detail").querySelectorAll(".html-preview").forEach((b) => b.addEventListener("click", () => {
+    // sandbox="" blocks scripts; the server's CSP also blocks every external load.
+    b.outerHTML = `<iframe class="preview" sandbox="" src="${b.dataset.src}" title="Page preview"></iframe>`;
+  }));
 }
 
 // --- copy as ---

@@ -225,3 +225,38 @@ tlspeek.export_har(saved.with_suffix(""))
 har_entries = json.loads(saved.with_suffix(".har").read_text())["log"]["entries"]
 assert len(har_entries) == 1 and har_entries[0]["comment"] == "login call", har_entries
 print("marks ok")
+
+# --- decoders and previews ---
+png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000")
+html_flow = tflow.tflow(resp=tutils.tresp(headers=[(b"content-type", b"text/html")], content=b"<script>x()</script>hi"))
+proto_flow = tflow.tflow(resp=tutils.tresp(headers=[(b"content-type", b"application/x-protobuf")],
+                                           content=bytes([8, 150, 1, 18, 3, 97, 98, 99])))
+img_flow = tflow.tflow(resp=tutils.tresp(headers=[(b"content-type", b"image/png")], content=png))
+with open(tmp / "views.mitm", "wb") as fo:
+    w = io.FlowWriter(fo)
+    for fl in (html_flow, proto_flow, img_flow):
+        w.add(fl)
+proc = subprocess.Popen(
+    [mitmdump, "-q", "-n", "-r", tmp / "views.mitm", "--set", "keepserving=true",
+     "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={(port := tlspeek.free_port())}"])
+try:
+    for _ in range(50):
+        try:
+            if len(call("/api/flows")[1]["flows"]) == 3:
+                break
+        except OSError:
+            pass
+        time.sleep(0.2)
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/body/0?part=response") as r:
+        assert "sandbox" in r.headers["Content-Security-Policy"] and "default-src 'none'" in r.headers["Content-Security-Policy"]
+        assert r.read() == b"<script>x()</script>hi"
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/body/2?part=response") as r:
+        assert r.headers["Content-Type"] == "image/png" and r.read() == png
+    status, view = call("/api/view/1?part=response&view=protobuf")
+    assert status == 200 and "150" in view["text"] and "abc" in view["text"], view
+    status, view = call("/api/view/1?part=response&view=hex%20dump")
+    assert status == 200 and "08 96 01" in view["text"].lower(), view
+    assert call("/api/view/99?part=response&view=auto")[0] == 404  # unknown flow
+finally:
+    proc.kill()
+print("views ok")

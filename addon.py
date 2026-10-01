@@ -17,9 +17,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse
 
-from mitmproxy import ctx, http
+from mitmproxy import contentviews, ctx, http
 from OpenSSL import SSL
 from mitmproxy.addons.savehar import SaveHar
+from mitmproxy.utils import strutils
 
 HERE = Path(__file__).parent
 # settings.json and captures\ live next to tlspeek.exe when frozen, else next to this file.
@@ -116,6 +117,9 @@ def body_text(msg):
     """Decoded body, or None for binary. Streamed bodies are not stored."""
     if msg is None or not msg.raw_content:
         return ""
+    content = msg.get_content(strict=False) or b""
+    if strutils.is_mostly_bin(content[:2048]):
+        return None
     return msg.get_text(strict=False)
 
 
@@ -316,7 +320,7 @@ class TlsPeek:
             if msg.raw_content is None:
                 body = "<body streamed, not stored>"
             elif body is None:
-                body = f"<binary, {len(msg.raw_content)} bytes>"
+                body = f"<binary, {len(msg.raw_content)} bytes: pick a decoder such as protobuf or hex dump>"
             return {"headers": list(msg.headers.items(multi=True)),
                     "body": body[:MAX_BODY], "truncated": len(body) > MAX_BODY}
 
@@ -327,6 +331,16 @@ class TlsPeek:
                   for m in f.websocket.messages[-MAX_WS_MESSAGES:]]
         return {"summary": self.summary(f), "request": message(f.request),
                 "response": message(f.response), "websocket": ws}
+
+    def view(self, f, part, view_name):
+        """Body decoded by one of mitmproxy's content views (protobuf, gRPC, msgpack, hex, ...)."""
+        msg = f.request if part == "request" else f.response
+        if msg is None or msg.raw_content is None:
+            raise ValueError("no body")
+        res = contentviews.prettify_message(msg, f, view_name)
+        text = res.text or ""
+        return {"text": text[:MAX_BODY], "truncated": len(text) > MAX_BODY, "view": res.view_name,
+                "views": sorted(contentviews.registry.keys())}
 
     def search(self, q):
         q = q.lower()
@@ -421,6 +435,20 @@ def make_handler(addon):
                 if f is None:
                     return self.send(404, {"error": "flow gone"})
                 self.send(200, addon.detail(f))
+            elif url.path.startswith("/api/body/") or url.path.startswith("/api/view/"):
+                f = addon.get(int(url.path.rsplit("/", 1)[1]))
+                part = q.get("part", ["response"])[0]
+                msg = None if f is None else f.request if part == "request" else f.response
+                if msg is None or msg.raw_content is None:
+                    return self.send(404, {"error": "no body"})
+                if url.path.startswith("/api/view/"):
+                    return self.send(200, addon.view(f, part, q.get("view", ["auto"])[0]))
+                # Raw body for image and HTML previews. The CSP sandboxes it and blocks every
+                # external load, so a previewed page cannot run scripts or phone home.
+                self.send(200, msg.get_content(strict=False) or b"",
+                          msg.headers.get("content-type", "application/octet-stream"), [
+                              ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
+                              ("X-Content-Type-Options", "nosniff")])
             elif url.path == "/api/search":
                 self.send(200, addon.search(q.get("q", [""])[0]))
             elif url.path == "/api/processes":
