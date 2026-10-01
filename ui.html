@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tls-peek</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fff; --line: #e3e6ea; --text: #1d2228; --muted: #6b7480;
+  --accent: #2f6fdf; --ok: #1f8a4c; --warn: #b7791f; --bad: #c43d3d; --sel: #e8f0fd;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c; --panel: #1c2026; --line: #2c323a; --text: #e3e7ec; --muted: #8b95a1;
+    --accent: #6c9ef5; --ok: #4cc283; --warn: #e0a84a; --bad: #ef6b6b; --sel: #24324a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; }
+button, input { font: inherit; color: inherit; }
+button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+input { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+header { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel);
+  border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { font-size: 14px; margin: 0 8px 0 0; }
+.field { display: flex; gap: 6px; align-items: center; }
+.field label { color: var(--muted); }
+#program-btn { display: flex; gap: 6px; align-items: center; max-width: 260px; }
+#program-btn img { width: 16px; height: 16px; }
+#program-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#host { width: 200px; }
+#search { width: 220px; margin-left: auto; }
+.status { color: var(--muted); }
+.status.live::before { content: "●"; color: var(--ok); margin-right: 4px; }
+.status.off::before { content: "●"; color: var(--bad); margin-right: 4px; }
+
+#events { background: color-mix(in srgb, var(--warn) 15%, var(--panel)); border-bottom: 1px solid var(--line);
+  padding: 6px 12px; display: none; }
+#events div { margin: 2px 0; }
+
+main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); min-height: 0; }
+#list { overflow: auto; border-right: 1px solid var(--line); }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
+  border-bottom: 1px solid var(--line); padding: 5px 8px; }
+td { padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: color-mix(in srgb, var(--sel) 50%, transparent); }
+tbody tr.sel { background: var(--sel); }
+.c-method { width: 64px; font-family: var(--mono); }
+.c-status { width: 54px; font-family: var(--mono); }
+.c-host { width: 26%; }
+.c-type { width: 18%; color: var(--muted); }
+.c-size, .c-ms { width: 72px; text-align: right; color: var(--muted); }
+.s2 { color: var(--ok); } .s3 { color: var(--accent); } .s4, .s5, .err { color: var(--bad); }
+.empty { color: var(--muted); padding: 40px 16px; text-align: center; }
+
+#detail { overflow: auto; background: var(--panel); }
+#detail .bar { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); align-items: center;
+  position: sticky; top: 0; background: var(--panel); }
+#detail .bar .tab[aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
+#detail .bar .spacer { flex: 1; }
+#detail .url { padding: 8px 12px; font-family: var(--mono); word-break: break-all; border-bottom: 1px solid var(--line); }
+#detail h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 12px 6px; }
+.headers { font-family: var(--mono); font-size: 12px; margin: 0 12px; }
+.headers div { display: grid; grid-template-columns: minmax(120px, 35%) 1fr; gap: 8px; padding: 2px 0; }
+.headers b { font-weight: 600; color: var(--muted); word-break: break-all; }
+.headers span { word-break: break-all; }
+pre { font-family: var(--mono); font-size: 12px; margin: 0 12px 16px; padding: 10px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
+  padding: 0; width: min(520px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgb(0 0 0 / .35); }
+dialog .top { padding: 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+dialog .top input[type=search] { flex: 1; }
+dialog .all { display: flex; gap: 4px; align-items: center; color: var(--muted); white-space: nowrap; }
+#procs { max-height: 60vh; overflow: auto; }
+#procs button { display: flex; gap: 10px; align-items: center; width: 100%; border: 0; border-radius: 0;
+  border-bottom: 1px solid var(--line); padding: 8px 12px; text-align: left; }
+#procs button:hover, #procs button:focus-visible { background: var(--sel); }
+#procs img { width: 20px; height: 20px; }
+#procs small { color: var(--muted); display: block; }
+
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  #list { border-right: 0; border-bottom: 1px solid var(--line); }
+  #search { margin-left: 0; width: 100%; }
+  .c-type, .c-ms { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>tls-peek</h1>
+  <div class="field">
+    <label for="program-btn">Program</label>
+    <button id="program-btn" type="button"><span>Pick program…</span></button>
+  </div>
+  <div class="field">
+    <label for="host">Host filter</label>
+    <input id="host" placeholder="api.example.com (empty = all)" autocomplete="off">
+    <button id="apply" class="primary" type="button">Apply</button>
+  </div>
+  <span id="status" class="status">Connecting…</span>
+  <input id="search" type="search" placeholder="Search URL, method, status…" aria-label="Search requests">
+  <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
+  <button id="export" type="button" title="Download all requests as HAR with credentials masked">Export HAR</button>
+</header>
+<div id="events" role="status"></div>
+<main>
+  <section id="list" aria-label="Requests">
+    <table>
+      <thead><tr><th class="c-method">Method</th><th class="c-status">Status</th><th class="c-host">Host</th>
+        <th>Path</th><th class="c-type">Type</th><th class="c-size">Size</th><th class="c-ms">Time</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty">No requests yet.<br>Pick a program, then close and reopen it and do the action.</div>
+  </section>
+  <section id="detail" aria-label="Request detail"><div class="empty">Select a request.</div></section>
+</main>
+
+<dialog id="picker" aria-label="Pick program">
+  <div class="top">
+    <input id="proc-search" type="search" placeholder="Filter, or type an .exe name and press Enter" aria-label="Filter programs">
+    <label class="all"><input id="proc-all" type="checkbox"> Background</label>
+    <button id="proc-close" type="button">Cancel</button>
+  </div>
+  <div id="procs"></div>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
+
+let flows = [];        // summaries, in capture order
+let next = 0;          // next flow id to fetch
+let clearedBefore = 0; // ids below this are hidden by "Clear"
+let selected = null;
+let tab = "request";
+let current = null;    // detail of the selected flow
+let program = "";
+let applyError = "";
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+// --- state and polling ---
+function showState(s) {
+  program = s.program;
+  $("#program-btn").innerHTML = s.program
+    ? `<img src="/api/icon?path=${encodeURIComponent(s.program)}" alt="" onerror="this.remove()"><span>${esc(s.program)}</span>`
+    : "<span>Pick program…</span>";
+  if (document.activeElement !== $("#host")) $("#host").value = s.host_filter;
+  const ev = $("#events");
+  ev.style.display = s.events.length ? "block" : "none";
+  ev.innerHTML = s.events.map((e) => `<div>⚠ ${esc(e.msg)}</div>`).join("");
+}
+
+async function poll() {
+  try {
+    const [state, fresh] = await Promise.all([api("/api/state"), api("/api/flows?since=" + next)]);
+    showState(state);
+    if (fresh.length) {
+      flows.push(...fresh);
+      next = fresh[fresh.length - 1].id + 1;
+      if (flows.length > 5000) flows.splice(0, flows.length - 5000);
+      render();
+    }
+    $("#status").className = applyError ? "status off" : "status live";
+    $("#status").textContent = applyError || (program ? "Capturing" : "No program");
+  } catch {
+    $("#status").className = "status off";
+    $("#status").textContent = "Disconnected";
+  }
+  setTimeout(poll, 1000);
+}
+
+// --- list ---
+function visible() {
+  const q = $("#search").value.trim().toLowerCase();
+  return flows.filter((f) => f.id >= clearedBefore &&
+    (!q || `${f.method} ${f.status ?? ""} ${f.url} ${f.type}`.toLowerCase().includes(q)));
+}
+
+function render() {
+  const list = visible();
+  $("#empty").style.display = list.length ? "none" : "block";
+  const atBottom = $("#list").scrollHeight - $("#list").scrollTop - $("#list").clientHeight < 40;
+  $("#rows").innerHTML = list.map((f) => {
+    const path = f.url.replace(/^https?:\/\/[^/]+/, "") || "/";
+    const st = f.error ? `<span class="err" title="${esc(f.error)}">ERR</span>`
+      : `<span class="s${String(f.status)[0]}">${f.status ?? ""}</span>`;
+    return `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}">
+      <td class="c-method">${esc(f.method)}</td><td class="c-status">${st}</td>
+      <td class="c-host" title="${esc(f.host)}">${esc(f.host)}</td><td title="${esc(f.url)}">${esc(path)}</td>
+      <td class="c-type">${esc(f.type)}</td><td class="c-size">${fmtSize(f.size)}</td>
+      <td class="c-ms">${f.ms == null ? "" : f.ms < 1000 ? f.ms + " ms" : (f.ms / 1000).toFixed(1) + " s"}</td></tr>`;
+  }).join("");
+  if (atBottom) $("#list").scrollTop = $("#list").scrollHeight;
+}
+
+$("#rows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr");
+  if (tr) select(Number(tr.dataset.id));
+});
+$("#search").addEventListener("input", render);
+$("#clear").addEventListener("click", () => { clearedBefore = next; render(); });
+$("#export").addEventListener("click", () => { location.href = "/api/har"; });
+
+// --- detail ---
+async function select(id) {
+  selected = id;
+  render();
+  try { current = await api("/api/flow/" + id); } catch (err) { current = null; $("#detail").innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
+  renderDetail();
+}
+
+function prettyBody(msg) {
+  if (!msg.body) return "";
+  const ctype = (msg.headers.find(([k]) => k.toLowerCase() === "content-type") || [])[1] || "";
+  let body = msg.body;
+  if (ctype.includes("json")) { try { body = JSON.stringify(JSON.parse(body), null, 2); } catch {} }
+  return body + (msg.truncated ? "\n… (truncated)" : "");
+}
+
+function messageHtml(msg) {
+  if (!msg) return `<div class="empty">No response${current.summary.error ? ": " + esc(current.summary.error) : ""}.</div>`;
+  const headers = msg.headers.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
+  const body = prettyBody(msg);
+  return `<h3>Headers</h3><div class="headers">${headers || "<i>none</i>"}</div>
+    <h3>Body</h3>${body ? `<pre>${esc(body)}</pre>` : `<div class="headers"><i>empty</i></div>`}`;
+}
+
+function curl() {
+  const r = current.request, s = current.summary;
+  const q = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'";
+  const parts = ["curl", "-X", s.method, q(s.url)];
+  for (const [k, v] of r.headers) if (!/^(content-length|host)$/i.test(k)) parts.push("-H", q(`${k}: ${v}`));
+  if (r.body) parts.push("--data-raw", q(r.body));
+  return parts.join(" ");
+}
+
+function renderDetail() {
+  const s = current.summary;
+  const params = [...new URL(s.url).searchParams];
+  $("#detail").innerHTML = `
+    <div class="bar" role="tablist">
+      <button class="tab" role="tab" aria-selected="${tab === "request"}" data-tab="request">Request</button>
+      <button class="tab" role="tab" aria-selected="${tab === "response"}" data-tab="response">Response${s.status ? " " + s.status : ""}</button>
+      <span class="spacer"></span>
+      <button id="copy-url" type="button">Copy URL</button>
+      <button id="copy-curl" type="button">Copy cURL</button>
+    </div>
+    <div class="url">${esc(s.method)} ${esc(s.url)}</div>
+    ${tab === "request" && params.length ? `<h3>Query</h3><div class="headers">${params.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>` : ""}
+    ${messageHtml(tab === "request" ? current.request : current.response)}`;
+  $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
+  $("#copy-url").addEventListener("click", (e) => copy(s.url, e.target));
+  $("#copy-curl").addEventListener("click", (e) => copy(curl(), e.target));
+}
+
+async function copy(text, btn) {
+  await navigator.clipboard.writeText(text);
+  const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1200);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || selected == null || !["ArrowUp", "ArrowDown"].includes(e.key)) return;
+  const list = visible(), i = list.findIndex((f) => f.id === selected);
+  const nextFlow = list[i + (e.key === "ArrowDown" ? 1 : -1)];
+  if (nextFlow) { e.preventDefault(); select(nextFlow.id); document.querySelector("tr.sel")?.scrollIntoView({ block: "nearest" }); }
+});
+
+// --- config ---
+async function applyConfig(newProgram) {
+  try {
+    showState(await api("/api/config", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ program: newProgram ?? program, host_filter: $("#host").value }),
+    }));
+    applyError = "";
+  } catch (err) {
+    applyError = "Could not apply: " + err.message;
+  }
+}
+$("#apply").addEventListener("click", () => applyConfig());
+$("#host").addEventListener("keydown", (e) => { if (e.key === "Enter") applyConfig(); });
+
+// --- program picker ---
+let procs = [];
+function renderProcs() {
+  const q = $("#proc-search").value.trim().toLowerCase();
+  $("#procs").innerHTML = procs.filter((p) => !q || (p.display + p.name).toLowerCase().includes(q)).map((p) =>
+    `<button type="button" data-name="${esc(p.name)}"><img src="/api/icon?path=${encodeURIComponent(p.path)}" alt="" onerror="this.style.visibility='hidden'">
+      <span>${esc(p.display)}<small>${esc(p.name)}</small></span></button>`).join("") || `<div class="empty">No match.</div>`;
+}
+$("#program-btn").addEventListener("click", async () => {
+  $("#proc-search").value = "";
+  $("#procs").innerHTML = `<div class="empty">Loading…</div>`;
+  $("#picker").showModal();
+  await loadProcs();
+});
+async function loadProcs() {
+  procs = await api("/api/processes" + ($("#proc-all").checked ? "?all=1" : ""));
+  renderProcs();
+}
+$("#proc-all").addEventListener("change", loadProcs);
+$("#proc-search").addEventListener("input", renderProcs);
+$("#proc-search").addEventListener("keydown", (e) => {
+  const name = $("#proc-search").value.trim();
+  if (e.key !== "Enter" || !/\.exe$/i.test(name)) return;
+  e.preventDefault();
+  $("#picker").close();
+  applyConfig(name);
+});
+$("#proc-close").addEventListener("click", () => $("#picker").close());
+$("#procs").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  $("#picker").close();
+  applyConfig(b.dataset.name);
+});
+
+poll();
+</script>
+</body>
+</html>
