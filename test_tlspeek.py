@@ -260,3 +260,23 @@ try:
 finally:
     proc.kill()
 print("views ok")
+
+# --- export: HAR or Postman, all or chosen ids, masked by default ---
+proc = start()
+try:
+    for _ in range(50):
+        if len(call("/api/flows")[1]["flows"]) == 2:
+            break
+        time.sleep(0.2)
+    status, har = post("/api/export", {"format": "har", "ids": [0]})
+    assert status == 200 and len(har["log"]["entries"]) == 1 and "HTOKEN" not in json.dumps(har)
+    status, pm = post("/api/export", {"format": "postman", "ids": None})
+    assert status == 200 and pm["info"]["schema"].endswith("v2.1.0/collection.json")
+    req = pm["item"][0]["item"][0]["request"]
+    assert req["method"] == "POST" and "HTOKEN" not in json.dumps(pm), req
+    assert {"key": "page", "value": "2"} in req["url"]["query"] and req["body"]["options"]["raw"]["language"] == "json"
+    status, raw = post("/api/export", {"format": "postman", "ids": [0], "mask": False})
+    assert "HTOKEN" in json.dumps(raw), "unmasked export must keep the token"
+finally:
+    proc.kill()
+print("export ok")

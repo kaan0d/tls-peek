@@ -104,6 +104,37 @@ def make_har(flows, mask=True):
     return har
 
 
+def make_postman(flows, mask=True):
+    """Postman v2.1 collection, one folder per host; notes become request descriptions."""
+    folders = {}
+    for f in flows:
+        f = f.copy()
+        if mask:
+            redact(f)
+        r = f.request
+        path = r.path.split("?")[0]
+        url = {"raw": r.pretty_url, "protocol": r.scheme, "host": r.pretty_host.split("."),
+               "path": [p for p in path.split("/") if p],
+               "query": [{"key": k, "value": v} for k, v in r.query.items(multi=True)]}
+        if r.port != {"http": 80, "https": 443}.get(r.scheme):
+            url["port"] = str(r.port)
+        req = {"method": r.method, "url": url,
+               "header": [{"key": k, "value": v} for k, v in r.headers.items(multi=True)
+                          if k.lower() not in ("content-length", "host") and not k.startswith(":")]}
+        text = body_text(r)
+        if text:
+            lang = "json" if "json" in r.headers.get("content-type", "") else "text"
+            req["body"] = {"mode": "raw", "raw": text, "options": {"raw": {"language": lang}}}
+        if f.comment:
+            req["description"] = f.comment
+        folders.setdefault(r.pretty_host, []).append({"name": f"{r.method} {path}", "request": req})
+    return {
+        "info": {"name": f"tls-peek {time.strftime('%Y-%m-%d %H:%M')}",
+                 "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+        "item": [{"name": host, "item": items} for host, items in folders.items()],
+    }
+
+
 def read_settings():
     return json.loads(SETTINGS.read_text("utf-8-sig")) if SETTINGS.exists() else {}
 
@@ -388,8 +419,12 @@ class TlsPeek:
 
         self.on_loop(go)
 
-    def har(self):
-        return make_har([f for f in list(self.flows) if f.response])
+    def export(self, fmt, ids=None, mask=True):
+        """HAR or Postman collection of the given UI ids (all when None)."""
+        flows = list(self.flows) if ids is None else [f for f in map(self.get, ids) if f is not None]
+        if fmt == "postman":
+            return make_postman(flows, mask)
+        return make_har([f for f in flows if f.response], mask)
 
 
 def make_handler(addon):
@@ -462,9 +497,6 @@ def make_handler(addon):
                               [("Cache-Control", "max-age=3600")])
                 except Exception:
                     self.send(404, b"", "image/png")
-            elif url.path == "/api/har":
-                self.send(200, addon.har(), headers=[
-                    ("Content-Disposition", f'attachment; filename="tlspeek-{time.strftime("%Y%m%d-%H%M%S")}.har"')])
             else:
                 self.send(404, {"error": "not found"})
 
@@ -497,6 +529,11 @@ def make_handler(addon):
                 if self.path == "/api/mark":
                     addon.mark(int(body["id"]), body.get("marked"), body.get("note"))
                     return self.send(200, {})
+                if self.path == "/api/export":
+                    fmt = "postman" if body.get("format") == "postman" else "har"
+                    data = addon.export(fmt, body.get("ids"), body.get("mask", True) is not False)
+                    name = f'tlspeek-{time.strftime("%Y%m%d-%H%M%S")}' + (".postman_collection.json" if fmt == "postman" else ".har")
+                    return self.send(200, data, headers=[("Content-Disposition", f'attachment; filename="{name}"')])
                 if self.path == "/api/resend":
                     new_id = addon.resend(int(body["id"]), body["method"], body["url"],
                                           body.get("headers", []), body.get("body", ""))

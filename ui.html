@@ -106,6 +106,14 @@ table.stats { margin: 0 12px 16px; width: calc(100% - 24px); min-width: 0; table
 table.stats th { position: static; }
 table.stats tbody tr { cursor: pointer; }
 .muted { color: var(--muted); }
+.ex { padding: 14px; display: grid; gap: 12px; }
+.ex fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: grid; gap: 6px; margin: 0; }
+.ex legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
+.ex label { display: flex; gap: 8px; align-items: center; }
+.ex label:has(input:disabled) { opacity: .5; }
+.ex small { color: var(--muted); }
+.ex .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+#ex-error { color: var(--bad); margin-right: auto; }
 .same { margin: 0 12px; color: var(--muted); font-style: italic; }
 th { position: sticky; top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
   border-bottom: 1px solid var(--line); padding: 5px 8px; z-index: 1; }
@@ -205,7 +213,7 @@ dialog .top input[type=search] { flex: 1; }
   <span class="spacer"></span>
   <button id="stats-btn" type="button" title="Counts, sizes and timings for the requests shown">Stats</button>
   <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
-  <button id="export" type="button" title="Download all requests as HAR with credentials masked">Export HAR</button>
+  <button id="export" type="button" title="Download requests as HAR or a Postman collection">Export…</button>
   <button id="stop" type="button" title="Stop capturing, save the HAR and remove the certificate">Stop</button>
 </header>
 <div id="stopped" hidden><div role="alertdialog" aria-labelledby="stopped-title">
@@ -251,6 +259,23 @@ dialog .top input[type=search] { flex: 1; }
     <button id="proc-close" type="button">Cancel</button>
   </div>
   <div id="procs"></div>
+</dialog>
+
+<dialog id="export-dlg" aria-label="Export">
+  <form method="dialog" class="ex">
+    <fieldset><legend>Format</legend>
+      <label><input type="radio" name="ex-format" value="har" checked> HAR <small>(browser dev tools, most HTTP tools)</small></label>
+      <label><input type="radio" name="ex-format" value="postman"> Postman collection <small>(one folder per host)</small></label>
+    </fieldset>
+    <fieldset><legend>Requests</legend>
+      <label><input type="radio" name="ex-scope" value="all"> All <small></small></label>
+      <label><input type="radio" name="ex-scope" value="shown"> Shown by the filters <small></small></label>
+      <label><input type="radio" name="ex-scope" value="selected"> Selected <small></small></label>
+    </fieldset>
+    <label><input type="checkbox" id="ex-mask" checked> Mask credentials (tokens, cookies, passwords…)</label>
+    <div class="actions"><span id="ex-error"></span>
+      <button type="button" id="ex-cancel">Cancel</button><button type="button" id="ex-go" class="primary">Download</button></div>
+  </form>
 </dialog>
 
 <dialog id="compare" aria-label="Compare two requests">
@@ -558,7 +583,32 @@ $("#rows").addEventListener("click", (e) => {
 });
 $("#sel-clear").addEventListener("click", () => { picked.clear(); render(); });
 $("#clear").addEventListener("click", () => { clearedBefore = Math.max(0, ...flows.keys()) + 1; picked.clear(); render(); });
-$("#export").addEventListener("click", () => { location.href = "/api/har"; });
+// --- export ---
+$("#export").addEventListener("click", () => {
+  const counts = { all: flows.size, shown: visible().length, selected: picked.size };
+  document.querySelectorAll("input[name=ex-scope]").forEach((r) => {
+    r.disabled = counts[r.value] === 0;
+    r.closest("label").querySelector("small").textContent = `(${counts[r.value]})`;
+  });
+  const scope = document.querySelector(`input[name=ex-scope][value=${picked.size ? "selected" : "shown"}]`);
+  if (!scope.disabled) scope.checked = true;
+  $("#ex-error").textContent = "";
+  $("#export-dlg").showModal();
+});
+$("#ex-cancel").addEventListener("click", () => $("#export-dlg").close());
+$("#ex-go").addEventListener("click", async () => {
+  const scope = document.querySelector("input[name=ex-scope]:checked").value;
+  const ids = scope === "all" ? null : scope === "selected" ? [...picked] : visible().map((f) => f.id);
+  const format = document.querySelector("input[name=ex-format]:checked").value;
+  const r = await fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ format, ids, mask: $("#ex-mask").checked }) });
+  if (!r.ok) { $("#ex-error").textContent = "Export failed."; return; }
+  const name = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "")?.[1] || "tlspeek-export.json";
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await r.blob()), download: name });
+  a.click();
+  URL.revokeObjectURL(a.href);
+  $("#export-dlg").close();
+});
 renderHead();
 
 // --- compare two requests ---
