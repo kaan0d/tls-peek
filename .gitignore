@@ -3,3 +3,6 @@
 .mitmproxy/
 captures/
 __pycache__/
+build/
+dist/
+*.spec

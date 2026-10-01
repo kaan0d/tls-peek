@@ -4,7 +4,7 @@
   tlspeek.py open [FILE]    view a saved .mitm session (file dialog without FILE)
   tlspeek.py cleanup        untrust and delete the CA (only needed after a crash)
 
-Dropping a .mitm file on tlspeek.exe opens it.
+Dropping a .mitm file on tlspeek.exe opens it. Add --no-browser to skip opening the UI.
 """
 import ctypes
 import json
@@ -23,6 +23,7 @@ import addon
 CONFDIR = addon.APP_DIR / ".mitmproxy"
 CAPTURES = addon.APP_DIR / "captures"
 ELEVATED = "--elevated" in sys.argv
+NO_BROWSER = "--no-browser" in sys.argv
 
 
 def fail(msg):
@@ -57,7 +58,8 @@ def open_when_up(port, timeout=120):
     while time.time() < end:
         try:
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            if not NO_BROWSER:
+                webbrowser.open(f"http://127.0.0.1:{port}")
             return True
         except OSError:
             time.sleep(0.3)
@@ -179,7 +181,7 @@ def open_session(path):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != "--elevated"]
+    args = [a for a in sys.argv[1:] if a not in ("--elevated", "--no-browser")]
     cmd = args[0] if args else "capture"
     if cmd.lower().endswith(".mitm"):
         open_session(cmd)
