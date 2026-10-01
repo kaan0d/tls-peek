@@ -1,5 +1,5 @@
 {
-  "_comment": "program: .exe to monitor (tlspeek.cmd > 1 picks it for you). host_filter: optional plain domain like api.example.com; empty = decrypt all of the program's traffic.",
+  "_comment": "Saved by the tls-peek UI. program: .exe to monitor. host_filter: optional plain domain like api.example.com (empty = all traffic). ui_port: port of the UI.",
 
   "program": "MyApp.exe",
 
