@@ -1,16 +1,26 @@
 # ============================================================================
 #  mitm-cleanup.ps1
 #  Cleanup for security/hygiene when done:
+#   - stops a leftover mitmweb/mitmdump
 #   - removes the mitmproxy certificate from trusted roots
-#   - turns off the system proxy setting (if any)
-#  Run via START-cleanup.cmd (as administrator).
+#   - deletes this folder's CA private key (.mitmproxy)
+#  mitm-capture.ps1 runs this itself on exit. Run it by hand (tlspeek.cmd >
+#  Cleanup) only if the capture window was closed or killed.
 # ============================================================================
+param([switch]$Quiet)
+
+Get-Process mitmweb, mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+
 Write-Host "Removing mitmproxy certificate from trusted roots..." -ForegroundColor Cyan
-try { certutil -delstore Root mitmproxy | Out-Null; Write-Host "  -> removed (if present)." } catch { Write-Host "  -> not found / already gone." }
+$n = 0
+while ($n -lt 10) { certutil -delstore Root mitmproxy | Out-Null; if ($LASTEXITCODE -ne 0) { break }; $n++ }
+Write-Host "  -> removed $n certificate(s)."
 
-Write-Host "Turning off system proxy setting (to be safe)..." -ForegroundColor Cyan
-$k = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-try { Set-ItemProperty $k ProxyEnable 0 -ErrorAction Stop; Write-Host "  -> ProxyEnable=0" } catch {}
+$confdir = Join-Path $PSScriptRoot ".mitmproxy"
+if (Test-Path $confdir) {
+  Remove-Item $confdir -Recurse -Force
+  Write-Host "  -> deleted CA key folder $confdir"
+}
 
-Write-Host "`nCleanup done." -ForegroundColor Green
-Read-Host "Press Enter to close"
+Write-Host "Cleanup done." -ForegroundColor Green
+if (-not $Quiet) { Read-Host "Press Enter to close" }

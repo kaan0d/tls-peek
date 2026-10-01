@@ -1,3 +1,4 @@
 *.mitm
 *.har
 .mitmproxy/
+captures/
