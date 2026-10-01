@@ -2,7 +2,7 @@
 #  bootstrap.ps1
 #  Makes sure Python, mitmproxy and the tray icon libraries are installed (installs them on first run),
 #  then runs tlspeek.py with the given arguments (none = start page).
-#  Called by tlspeek.cmd. Does not need administrator rights. Output goes to tlspeek.log.
+#  Called by tlspeek.cmd. Does not need administrator rights.
 # ============================================================================
 param([Parameter(ValueFromRemainingArguments)] $rest)
 $ErrorActionPreference = "Stop"
@@ -46,9 +46,5 @@ if (-not $hasDeps) {
   if ($LASTEXITCODE -ne 0) { Stop-WithError "Install failed. Try by hand:  $py -m pip install --user mitmproxy pystray pillow" }
 }
 
-# Start tls-peek with pythonw (no console window) and let this window close.
-$exe = & $py -c "import sys; print(sys.executable)"
-$pyw = Join-Path (Split-Path $exe) "pythonw.exe"
-if (-not (Test-Path $pyw)) { $pyw = $exe }
-$script = '"' + (Join-Path $PSScriptRoot "tlspeek.py") + '"'
-Start-Process $pyw -ArgumentList (@($script) + @($rest | Where-Object { $_ })) -WorkingDirectory $PSScriptRoot
+& $py (Join-Path $PSScriptRoot "tlspeek.py") @rest
+if ($LASTEXITCODE -ne 0) { Read-Host "Press Enter to exit" }

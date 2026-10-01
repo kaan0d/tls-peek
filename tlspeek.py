@@ -26,29 +26,16 @@ import addon
 
 CONFDIR = addon.APP_DIR / ".mitmproxy"
 CAPTURES = addon.APP_DIR / "captures"
-LOG = addon.APP_DIR / "tlspeek.log"
 ELEVATED = "--elevated" in sys.argv
 NO_BROWSER = "--no-browser" in sys.argv
-# pythonw / the windowed exe have no console: output goes to tlspeek.log, errors to a message box.
-NO_CONSOLE = sys.stdout is None
 
 
 def fail(msg):
+    show_console(True)  # it may have been hidden behind the tray icon
     print(msg)
-    if NO_CONSOLE:
-        ctypes.windll.user32.MessageBoxW(None, msg, "tls-peek", 0x10)  # MB_ICONERROR
-    elif ELEVATED:
+    if ELEVATED:
         input("Press Enter to close")
     sys.exit(1)
-
-
-def windowless_python():
-    """Interpreter for child processes: pythonw.exe (no console window) when available."""
-    exe = Path(sys.executable)
-    if getattr(sys, "frozen", False):
-        return str(exe)
-    w = exe.with_name("pythonw.exe")
-    return str(w if w.exists() else exe)
 
 
 def is_admin():
@@ -106,7 +93,7 @@ def relaunch_as_admin(cmd):
     args = f"{cmd} --elevated --parent {os.getpid()}"
     params = args if getattr(sys, "frozen", False) else f'"{Path(__file__).resolve()}" {args}'
     info = _ShellExecuteInfo(cbSize=ctypes.sizeof(_ShellExecuteInfo), fMask=0x40,  # SEE_MASK_NOCLOSEPROCESS
-                             lpVerb="runas", lpFile=windowless_python(), lpParameters=params,
+                             lpVerb="runas", lpFile=sys.executable, lpParameters=params,
                              lpDirectory=str(addon.APP_DIR), nShow=1)
     if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
         return None
@@ -146,6 +133,21 @@ def tray_available():
         return False
 
 
+def show_console(show):
+    hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if hwnd:
+        ctypes.windll.user32.ShowWindow(hwnd, 5 if show else 0)  # SW_SHOW / SW_HIDE
+
+
+def owns_console():
+    """True when this console was opened just for tls-peek (double-clicked exe or tlspeek.cmd),
+    not a terminal the user is working in, so it is fine to hide it."""
+    if "--own-console" in sys.argv:
+        return True
+    procs = (ctypes.c_uint * 8)()
+    return getattr(sys, "frozen", False) and ctypes.windll.kernel32.GetConsoleProcessList(procs, 8) <= 2
+
+
 def tray_icon_image(paused):
     from PIL import Image, ImageDraw
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -165,7 +167,7 @@ def start_tray(port):
     import pystray
 
     base = f"http://127.0.0.1:{port}"
-    state = {"paused": False, "program": ""}
+    state = {"paused": False, "program": "", "console": False}
 
     def call(path, data=None):
         req = urllib.request.Request(base + path, headers=dict(TRAY_HEADER),
@@ -179,6 +181,9 @@ def start_tray(port):
         state.update(call("/api/pause", {"paused": not state["paused"]}))
         refresh(icon)
 
+    def toggle_console(icon, item):
+        state["console"] = not state["console"]
+        call("/api/console", {"show": state["console"]})
 
     def refresh(icon):
         if state.get("shown_paused") != state["paused"]:
@@ -191,7 +196,7 @@ def start_tray(port):
     icon = pystray.Icon("tls-peek", tray_icon_image(False), "tls-peek", pystray.Menu(
         pystray.MenuItem("Open tls-peek", lambda: webbrowser.open(base), default=True),
         pystray.MenuItem(lambda item: "Resume capture" if state["paused"] else "Pause capture", toggle_pause),
-        pystray.MenuItem("Open log", lambda: os.startfile(LOG) if LOG.exists() else None),
+        pystray.MenuItem("Show log window", toggle_console, checked=lambda item: state["console"]),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Stop capture", lambda: call("/api/stop", {})),
     ))
@@ -279,16 +284,20 @@ def capture():
         fail(f"Port {port} is busy. Is tls-peek already running? Otherwise change ui_port in settings.json.")
 
     if not is_admin():
-        child = relaunch_as_admin("capture")
+        tray = tray_available()
+        # With a tray icon the admin window hides itself; the tray can show it again.
+        child = relaunch_as_admin("capture --hide-console" if tray else "capture")
         if not child:
             fail("Capture needs administrator rights (the UAC prompt was declined).")
-        print(f"Capture is running as administrator (log: {LOG}). Stopping this program stops it.")
+        print("Capture is running as administrator. Closing this window stops it.")
         icon = None
         if open_when_up(port, alive=lambda: not exited(child)):
-            if tray_available():
+            if tray:
+                if owns_console():
+                    show_console(False)
                 icon = start_tray(port)
         elif not exited(child):
-            print(f"The UI did not come up. See {LOG}, then open http://127.0.0.1:{port}")
+            print(f"The UI did not come up. Check the administrator window, then open http://127.0.0.1:{port}")
         while not exited(child, 500):  # short waits keep Ctrl+C working
             pass
         if icon:
@@ -309,6 +318,8 @@ def capture():
         threading.Thread(target=open_when_up, args=(port,), daemon=True).start()
         if tray_available():
             start_tray(port)
+    if "--hide-console" in sys.argv:
+        show_console(False)
     print(f"Capturing. UI: http://127.0.0.1:{port}  Saving to: {session}.mitm")
     print("Stop with Ctrl+C. If nothing shows up, close and reopen the monitored program.\n")
     try:
@@ -320,7 +331,7 @@ def capture():
     finally:
         export_har(session)
         cleanup()
-    if ELEVATED and not NO_CONSOLE:
+    if ELEVATED and "--hide-console" not in sys.argv:
         time.sleep(1.5)  # long enough to see the summary before the window closes
 
 
@@ -351,7 +362,7 @@ def flag(name, default=None):
 
 def self_command(*args):
     """Command line that runs this program (script or frozen exe) with args."""
-    base = [windowless_python()] if getattr(sys, "frozen", False) else [windowless_python(), str(Path(__file__).resolve())]
+    base = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
     return base + [str(a) for a in args]
 
 
@@ -415,7 +426,8 @@ class Home:
                 raise ValueError("a capture or session view is already open")
             port = free_port()
             tray = tray_available()
-            handle = relaunch_as_admin(f"capture --port {port} --home-port {self.port}")
+            args = f"capture --port {port} --home-port {self.port}" + (" --hide-console" if tray else "")
+            handle = relaunch_as_admin(args)
             if not handle:
                 raise ValueError("Capture needs administrator permission; the prompt was declined.")
             self.child = {"kind": "capture", "port": port, "alive": lambda: not exited(handle)}
@@ -444,7 +456,7 @@ class Home:
         with self.lock:
             if self.child_alive() and self.child["kind"] == "capture":
                 raise ValueError("stop the running capture first")
-            handle = relaunch_as_admin("cleanup")
+            handle = relaunch_as_admin("cleanup --hide-console")
             if not handle:
                 raise ValueError("Cleanup needs administrator permission; the prompt was declined.")
             exited(handle, 60_000)
@@ -575,6 +587,8 @@ def run_home():
     print(f"tls-peek start page: http://127.0.0.1:{port}  (closing the page ends tls-peek)")
     if not NO_BROWSER:
         webbrowser.open(f"http://127.0.0.1:{port}")
+    if owns_console():
+        show_console(False)
     try:
         while not home.should_exit():
             home.tick()
@@ -585,26 +599,10 @@ def run_home():
     server.shutdown()
 
 
-def positional_args():
-    """Command line words that are not --flags or the values of --flag VALUE."""
-    with_value = {"--parent", "--port", "--home-port"}
-    return [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in with_value]
-
-
-def log_to_file():
-    """Without a console, print() would go nowhere: send output (ours and mitmproxy's) to tlspeek.log.
-    The start page begins a fresh log; the processes it starts append to it."""
-    if not NO_CONSOLE:
-        return
-    fresh = not positional_args()
-    sys.stdout = sys.stderr = open(LOG, "w" if fresh else "a", encoding="utf-8", buffering=1)
-    print(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} pid {os.getpid()}: {' '.join(sys.argv[1:]) or 'start page'}")
-
-
 def main():
-    log_to_file()
     stop_with_parent()
-    args = positional_args()
+    flags_with_value = {"--parent", "--port", "--home-port"}
+    args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in flags_with_value]
     cmd = args[0] if args else "home"
     if cmd.lower().endswith(".mitm"):
         open_session(cmd)
@@ -617,8 +615,10 @@ def main():
             if not relaunch_as_admin("cleanup"):
                 fail("Cleanup needs administrator rights.")
             return
+        if "--hide-console" in sys.argv:
+            show_console(False)
         removed = cleanup()
-        if ELEVATED and not NO_CONSOLE:
+        if ELEVATED and "--hide-console" not in sys.argv:
             input("Press Enter to close")
         sys.exit(removed)  # the start page reports this number
     elif cmd == "capture":
