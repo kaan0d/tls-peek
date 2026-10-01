@@ -8,6 +8,8 @@ Dropping a .mitm file on tlspeek.exe opens it. Add --no-browser to skip opening 
 """
 import ctypes
 import json
+import os
+import signal
 import shutil
 import socket
 import subprocess
@@ -16,6 +18,7 @@ import tempfile
 import threading
 import time
 import webbrowser
+from ctypes import wintypes
 from pathlib import Path
 
 import addon
@@ -53,10 +56,10 @@ def free_port():
         return s.getsockname()[1]
 
 
-def open_when_up(port, timeout=120):
+def open_when_up(port, timeout=120, alive=lambda: True):
     """Opens the UI in the browser once the server answers."""
     end = time.time() + timeout
-    while time.time() < end:
+    while time.time() < end and alive():
         try:
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
             if not NO_BROWSER:
@@ -67,13 +70,54 @@ def open_when_up(port, timeout=120):
     return False
 
 
+class _ShellExecuteInfo(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("fMask", wintypes.ULONG), ("hwnd", wintypes.HWND),
+                ("lpVerb", wintypes.LPCWSTR), ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
+                ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE),
+                ("lpIDList", ctypes.c_void_p), ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
+                ("dwHotKey", wintypes.DWORD), ("hIconOrMonitor", wintypes.HANDLE), ("hProcess", wintypes.HANDLE)]
+
+
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+kernel32.OpenProcess.restype = wintypes.HANDLE
+kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+SYNCHRONIZE = 0x00100000
+INFINITE = 0xFFFFFFFF
+
+
 def relaunch_as_admin(cmd):
-    if getattr(sys, "frozen", False):
-        params = f"{cmd} --elevated"
-    else:
-        params = f'"{Path(__file__).resolve()}" {cmd} --elevated'
-    rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, str(addon.APP_DIR), 1)
-    return rc > 32
+    """Starts this program again as administrator (UAC prompt). Returns the new process handle,
+    or None when the prompt was declined. The new process stops when this one exits."""
+    args = f"{cmd} --elevated --parent {os.getpid()}"
+    params = args if getattr(sys, "frozen", False) else f'"{Path(__file__).resolve()}" {args}'
+    info = _ShellExecuteInfo(cbSize=ctypes.sizeof(_ShellExecuteInfo), fMask=0x40,  # SEE_MASK_NOCLOSEPROCESS
+                             lpVerb="runas", lpFile=sys.executable, lpParameters=params,
+                             lpDirectory=str(addon.APP_DIR), nShow=1)
+    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
+        return None
+    return info.hProcess
+
+
+def exited(handle, wait_ms=0):
+    return kernel32.WaitForSingleObject(handle, wait_ms) == 0  # WAIT_OBJECT_0
+
+
+def stop_with_parent():
+    """Admin process: stop like Ctrl+C once the window that started us is gone (closed, killed),
+    so a capture never keeps running on its own."""
+    if "--parent" not in sys.argv:
+        return
+    handle = kernel32.OpenProcess(SYNCHRONIZE, False, int(sys.argv[sys.argv.index("--parent") + 1]))
+    if not handle:
+        return
+
+    def wait():
+        kernel32.WaitForSingleObject(handle, INFINITE)
+        print("The tls-peek window that started this capture was closed; stopping.")
+        signal.raise_signal(signal.SIGINT)
+
+    threading.Thread(target=wait, daemon=True).start()
 
 
 TRAY_HEADER = {"X-Tlspeek-Tray": "1"}  # tray polls must not count as an open UI tab (auto-stop)
@@ -113,9 +157,9 @@ def tray_icon_image(paused):
     return img
 
 
-def run_tray(port):
+def start_tray(port):
     """Tray icon for a running capture: open the UI, pause/resume, show the log window, stop.
-    Returns when the capture is gone."""
+    Runs in its own thread; returns the icon (call .stop() to remove it)."""
     import json
     import urllib.request
 
@@ -158,18 +202,17 @@ def run_tray(port):
 
     def watch():
         icon.visible = True
-        misses = 0
-        while misses < 3:  # the capture is gone once the server stops answering
-            time.sleep(2)
+        while True:
             try:
                 state.update(call("/api/state"))
-                misses = 0
                 refresh(icon)
             except OSError:
-                misses += 1
-        icon.stop()
+                pass
+            time.sleep(2)
 
-    icon.run(setup=lambda i: threading.Thread(target=watch, daemon=True).start())
+    threading.Thread(target=icon.run, kwargs={"setup": lambda i: threading.Thread(target=watch, daemon=True).start()},
+                     daemon=True).start()
+    return icon
 
 
 
@@ -234,16 +277,22 @@ def capture():
     if not is_admin():
         tray = tray_available()
         # With a tray icon the admin window hides itself; the tray can show it again.
-        if not relaunch_as_admin("capture --hide-console" if tray else "capture"):
+        child = relaunch_as_admin("capture --hide-console" if tray else "capture")
+        if not child:
             fail("Capture needs administrator rights (the UAC prompt was declined).")
-        print("Capture started in the administrator window. Opening the UI...")
-        if not open_when_up(port):
+        print("Capture is running as administrator. Closing this window stops it.")
+        icon = None
+        if open_when_up(port, alive=lambda: not exited(child)):
+            if tray:
+                if owns_console():
+                    show_console(False)
+                icon = start_tray(port)
+        elif not exited(child):
             print(f"The UI did not come up. Check the administrator window, then open http://127.0.0.1:{port}")
-            return
-        if tray:
-            if owns_console():
-                show_console(False)
-            run_tray(port)
+        while not exited(child, 500):  # short waits keep Ctrl+C working
+            pass
+        if icon:
+            icon.stop()
         return
 
     cleanup()  # a CA left behind by a crashed session
@@ -259,7 +308,7 @@ def capture():
     if not ELEVATED:  # started as admin directly, so nobody else opens the browser or shows a tray icon
         threading.Thread(target=open_when_up, args=(port,), daemon=True).start()
         if tray_available():
-            threading.Thread(target=run_tray, args=(port,), daemon=True).start()
+            start_tray(port)
     if "--hide-console" in sys.argv:
         show_console(False)
     print(f"Capturing. UI: http://127.0.0.1:{port}  Saving to: {session}.mitm")
@@ -273,8 +322,8 @@ def capture():
     finally:
         export_har(session)
         cleanup()
-    if ELEVATED:
-        time.sleep(3)  # long enough to read the summary before the window closes
+    if ELEVATED and "--hide-console" not in sys.argv:
+        time.sleep(1.5)  # long enough to see the summary before the window closes
 
 
 def open_session(path):
@@ -295,7 +344,9 @@ def open_session(path):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    stop_with_parent()
+    flags_with_value = {"--parent"}
+    args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in flags_with_value]
     cmd = args[0] if args else "capture"
     if cmd.lower().endswith(".mitm"):
         open_session(cmd)

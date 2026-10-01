@@ -295,3 +295,21 @@ assert exits_within(proc, 5), "tray polling kept the capture alive"
 if tlspeek.tray_available():
     assert tlspeek.tray_icon_image(True).size == (64, 64)
 print("tray ok")
+
+# --- a capture stops when the window that started it goes away ---
+starter = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+viewer = subprocess.Popen([sys.executable, here / "tlspeek.py", "open", tmp / "c.mitm", "--no-browser",
+                           "--parent", str(starter.pid)], stdout=subprocess.DEVNULL)
+time.sleep(6)
+assert viewer.poll() is None, "it should run while the starter is alive"
+starter.kill()
+t = time.time()
+assert exits_within(viewer, 10), "it kept running after the starter was killed"
+print(f"parent ok (stopped {time.time() - t:.1f}s after the starter died)")
+
+# the starter's wait loop: exited() sees a process end
+short = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
+h = tlspeek.kernel32.OpenProcess(tlspeek.SYNCHRONIZE, False, short.pid)
+assert h and not tlspeek.exited(h)
+assert tlspeek.exited(h, 5000)
+print("wait ok")
