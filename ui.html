@@ -85,9 +85,9 @@ th .grip:hover { background: var(--accent); }
 .c-pick { text-align: center; padding-left: 4px; padding-right: 0; }
 tbody tr.picked { box-shadow: inset 3px 0 var(--accent); }
 .bar-track { position: relative; height: 10px; }
-.bar { position: absolute; top: 1px; height: 8px; border-radius: 2px; background: var(--accent); min-width: 2px; }
-.bar.pending { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 8px); }
-.bar.error { background: var(--bad); }
+.tl-bar { position: absolute; top: 1px; height: 8px; border-radius: 2px; background: var(--accent); min-width: 2px; }
+.tl-bar.pending { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 8px); }
+.tl-bar.error { background: var(--bad); }
 #selection { display: flex; gap: 6px; align-items: center; margin-left: auto; }
 #sel-count { color: var(--muted); }
 #compare { width: min(1000px, calc(100vw - 32px)); }
@@ -98,6 +98,14 @@ tbody tr.picked { box-shadow: inset 3px 0 var(--accent); }
 .ddel { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); display: block; }
 .dadd { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); display: block; }
 .legend .ddel, .legend .dadd { display: inline; padding: 0 4px; border-radius: 3px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 12px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.tile span { color: var(--muted); font-size: 12px; }
+.tile b { font-size: 18px; font-variant-numeric: tabular-nums; }
+table.stats { margin: 0 12px 16px; width: calc(100% - 24px); min-width: 0; table-layout: auto; }
+table.stats th { position: static; }
+table.stats tbody tr { cursor: pointer; }
+.muted { color: var(--muted); }
 .same { margin: 0 12px; color: var(--muted); font-style: italic; }
 th { position: sticky; top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
   border-bottom: 1px solid var(--line); padding: 5px 8px; z-index: 1; }
@@ -195,6 +203,7 @@ dialog .top input[type=search] { flex: 1; }
   <button id="pause" class="live-only" type="button" aria-pressed="false" title="Stop intercepting new connections and recording">Pause</button>
   <span id="status" class="status">Connecting…</span>
   <span class="spacer"></span>
+  <button id="stats-btn" type="button" title="Counts, sizes and timings for the requests shown">Stats</button>
   <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
   <button id="export" type="button" title="Download all requests as HAR with credentials masked">Export HAR</button>
   <button id="stop" type="button" title="Stop capturing, save the HAR and remove the certificate">Stop</button>
@@ -486,7 +495,7 @@ function timelineCell(f, t0, span) {
   const end = f.ms != null ? f.time + f.ms / 1000 : Date.now() / 1000;
   const left = ((f.time - t0) / span) * 100, width = Math.max(((end - f.time) / span) * 100, 0.6);
   const tip = `starts +${(f.time - t0).toFixed(2)} s, ${f.ms != null ? fmtMs(f.ms) : "still waiting"}`;
-  return `<div class="bar-track" title="${tip}"><div class="bar ${f.state}" style="left:${left}%;width:${Math.min(width, 100 - left)}%"></div></div>`;
+  return `<div class="bar-track" title="${tip}"><div class="tl-bar ${f.state}" style="left:${left}%;width:${Math.min(width, 100 - left)}%"></div></div>`;
 }
 
 function render() {
@@ -523,6 +532,7 @@ function render() {
   $("#selection").hidden = picked.size === 0;
   $("#sel-count").textContent = `${picked.size} selected`;
   $("#compare-btn").disabled = picked.size !== 2;
+  if (statsOpen) renderStats();
 }
 
 $("#rows").addEventListener("click", (e) => {
@@ -597,9 +607,58 @@ $("#compare-btn").addEventListener("click", async () => {
 });
 $("#compare-close").addEventListener("click", () => $("#compare").close());
 
+// --- stats panel (for the requests currently shown) ---
+let statsOpen = false;
+
+function renderStats() {
+  const list = visible();
+  const done = list.filter((f) => f.ms != null).map((f) => f.ms).sort((a, b) => a - b);
+  const pct = (p) => done.length ? fmtMs(done[Math.min(done.length - 1, Math.floor(p * done.length))]) : "–";
+  const isErr = (f) => f.state === "error" || f.status >= 400;
+  const bytes = list.reduce((n, f) => n + f.size, 0);
+  const groups = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, Pending: 0, Error: 0 };
+  for (const f of list) {
+    if (f.state === "error") groups.Error++;
+    else if (f.state === "pending") groups.Pending++;
+    else if (`${String(f.status)[0]}xx` in groups) groups[`${String(f.status)[0]}xx`]++;
+  }
+  const hosts = new Map();
+  for (const f of list) {
+    const h = hosts.get(f.host) || { host: f.host, n: 0, err: 0, bytes: 0, ms: 0, timed: 0 };
+    h.n++; h.err += isErr(f); h.bytes += f.size;
+    if (f.ms != null) { h.ms += f.ms; h.timed++; }
+    hosts.set(f.host, h);
+  }
+  const types = new Map();
+  for (const f of list) types.set(typeOf(f), (types.get(typeOf(f)) || 0) + 1);
+  const tile = (label, value) => `<div class="tile"><span>${label}</span><b>${value}</b></div>`;
+  $("#detail").innerHTML = `
+    <div class="bar"><b>Stats</b><span class="muted">${list.length === flows.size ? "all requests" : "requests matching the filters"}</span>
+      <span class="spacer"></span><button type="button" id="stats-close">Close</button></div>
+    <div class="tiles">
+      ${tile("Requests", list.length)}${tile("Errors", list.filter(isErr).length)}${tile("Received", fmtSize(bytes))}
+      ${tile("Median time", pct(0.5))}${tile("95th pct", pct(0.95))}${tile("Hosts", hosts.size)}
+    </div>
+    <h3>Status</h3><div class="headers">${kv(Object.entries(groups).filter(([, n]) => n).map(([k, n]) => [k, String(n)])) || "<i>none</i>"}</div>
+    <h3>Types</h3><div class="headers">${kv([...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [TYPES.find(([v]) => v === k)[1], String(n)]))}</div>
+    <h3>Hosts</h3>
+    <table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num">Avg time</th></tr></thead>
+    <tbody>${[...hosts.values()].sort((a, b) => b.n - a.n).map((h) => `<tr data-host="${esc(h.host)}" title="Show only this host">
+      <td>${esc(h.host)}</td><td class="num">${h.n}</td><td class="num ${h.err ? "err" : ""}">${h.err}</td>
+      <td class="num">${fmtSize(h.bytes)}</td><td class="num">${h.timed ? fmtMs(Math.round(h.ms / h.timed)) : "–"}</td></tr>`).join("")}</tbody></table>`;
+  $("#stats-close").addEventListener("click", () => { statsOpen = false; $("#detail").innerHTML = `<div class="empty">Select a request.</div>`; });
+  $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
+    filter.host = tr.dataset.host;
+    $("#host-pick").value = filter.host;
+    render();
+  }));
+}
+$("#stats-btn").addEventListener("click", () => { statsOpen = true; selected = null; render(); });
+
 // --- detail ---
 function select(id) {
   selected = id;
+  statsOpen = false;
   if (tab === "messages") tab = "request";
   $("#detail").scrollTop = 0;
   render();
