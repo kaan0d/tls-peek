@@ -280,3 +280,18 @@ try:
 finally:
     proc.kill()
 print("export ok")
+
+# --- tray: its polling must not keep an unattended capture alive ---
+proc = start("--set", "ui_auto_stop=4")
+tray_req = lambda: urllib.request.urlopen(urllib.request.Request(
+    f"http://127.0.0.1:{port}/api/state", headers=tlspeek.TRAY_HEADER), timeout=2).read()
+try:
+    for _ in range(8):
+        tray_req()
+        time.sleep(1)
+except OSError:
+    pass  # stopped while the tray was still polling: what we want
+assert exits_within(proc, 5), "tray polling kept the capture alive"
+if tlspeek.tray_available():
+    assert tlspeek.tray_icon_image(True).size == (64, 64)
+print("tray ok")

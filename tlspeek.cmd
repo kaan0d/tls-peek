@@ -5,4 +5,4 @@ echo   2  Open a saved session
 echo   3  Cleanup (only after a crash)
 choice /c 123 /n /m "Choose 1-3: "
 if errorlevel 3 (set "action=cleanup") else if errorlevel 2 (set "action=open") else (set "action=capture")
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0bootstrap.ps1" %action%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0bootstrap.ps1" %action% --own-console

@@ -7,6 +7,7 @@ monitored program rejects the mitmproxy certificate (pinning).
 With redact=true it masks credentials in every flow (used for HAR export).
 """
 import asyncio
+import ctypes
 import json
 import logging
 import re
@@ -456,7 +457,8 @@ def make_handler(addon):
         def do_GET(self):
             if not self.allowed():
                 return
-            addon.seen()
+            if not self.headers.get("X-Tlspeek-Tray"):
+                addon.seen()
             url = urlparse(self.path)
             q = parse_qs(url.query)
             if url.path == "/":
@@ -516,7 +518,14 @@ def make_handler(addon):
                 if self.path == "/api/bye":
                     addon.seen(bye=True)
                     return self.send(200, {})
-                addon.seen()
+                if not self.headers.get("X-Tlspeek-Tray"):
+                    addon.seen()
+                if self.path == "/api/console":
+                    # The tray icon shows or hides this process's log window.
+                    hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+                    if hwnd:
+                        ctypes.windll.user32.ShowWindow(hwnd, 5 if body.get("show") else 0)
+                    return self.send(200, {})
                 if self.path == "/api/stop":
                     self.send(200, {})
                     addon.loop.call_soon_threadsafe(ctx.master.shutdown)

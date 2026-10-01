@@ -27,6 +27,7 @@ NO_BROWSER = "--no-browser" in sys.argv
 
 
 def fail(msg):
+    show_console(True)  # it may have been hidden behind the tray icon
     print(msg)
     if ELEVATED:
         input("Press Enter to close")
@@ -73,6 +74,103 @@ def relaunch_as_admin(cmd):
         params = f'"{Path(__file__).resolve()}" {cmd} --elevated'
     rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, str(addon.APP_DIR), 1)
     return rc > 32
+
+
+TRAY_HEADER = {"X-Tlspeek-Tray": "1"}  # tray polls must not count as an open UI tab (auto-stop)
+
+
+def tray_available():
+    try:
+        import PIL  # noqa: F401
+        import pystray  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def show_console(show):
+    hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if hwnd:
+        ctypes.windll.user32.ShowWindow(hwnd, 5 if show else 0)  # SW_SHOW / SW_HIDE
+
+
+def owns_console():
+    """True when this console was opened just for tls-peek (double-clicked exe or tlspeek.cmd),
+    not a terminal the user is working in, so it is fine to hide it."""
+    if "--own-console" in sys.argv:
+        return True
+    procs = (ctypes.c_uint * 8)()
+    return getattr(sys, "frozen", False) and ctypes.windll.kernel32.GetConsoleProcessList(procs, 8) <= 2
+
+
+def tray_icon_image(paused):
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((2, 2, 62, 62), 14, fill=(224, 168, 74) if paused else (47, 111, 223))
+    d.ellipse((14, 12, 42, 40), outline="white", width=6)  # magnifier
+    d.line((38, 36, 52, 50), fill="white", width=8)
+    return img
+
+
+def run_tray(port):
+    """Tray icon for a running capture: open the UI, pause/resume, show the log window, stop.
+    Returns when the capture is gone."""
+    import json
+    import urllib.request
+
+    import pystray
+
+    base = f"http://127.0.0.1:{port}"
+    state = {"paused": False, "program": "", "console": False}
+
+    def call(path, data=None):
+        req = urllib.request.Request(base + path, headers=dict(TRAY_HEADER),
+                                     data=None if data is None else json.dumps(data).encode())
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(req, timeout=3) as r:
+            return json.loads(r.read())
+
+    def toggle_pause(icon, item):
+        state.update(call("/api/pause", {"paused": not state["paused"]}))
+        refresh(icon)
+
+    def toggle_console(icon, item):
+        state["console"] = not state["console"]
+        call("/api/console", {"show": state["console"]})
+
+    def refresh(icon):
+        if state.get("shown_paused") != state["paused"]:
+            state["shown_paused"] = state["paused"]
+            icon.icon = tray_icon_image(state["paused"])
+        what = state["program"] or "no program picked"
+        icon.title = f"tls-peek: {'paused' if state['paused'] else 'capturing'} {what}"[:127]
+        icon.update_menu()
+
+    icon = pystray.Icon("tls-peek", tray_icon_image(False), "tls-peek", pystray.Menu(
+        pystray.MenuItem("Open tls-peek", lambda: webbrowser.open(base), default=True),
+        pystray.MenuItem(lambda item: "Resume capture" if state["paused"] else "Pause capture", toggle_pause),
+        pystray.MenuItem("Show log window", toggle_console, checked=lambda item: state["console"]),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Stop capture", lambda: call("/api/stop", {})),
+    ))
+
+    def watch():
+        icon.visible = True
+        misses = 0
+        while misses < 3:  # the capture is gone once the server stops answering
+            time.sleep(2)
+            try:
+                state.update(call("/api/state"))
+                misses = 0
+                refresh(icon)
+            except OSError:
+                misses += 1
+        icon.stop()
+
+    icon.run(setup=lambda i: threading.Thread(target=watch, daemon=True).start())
+
 
 
 def run_mitmdump(args):
@@ -134,11 +232,18 @@ def capture():
         fail(f"Port {port} is busy. Is tls-peek already running? Otherwise change ui_port in settings.json.")
 
     if not is_admin():
-        if not relaunch_as_admin("capture"):
+        tray = tray_available()
+        # With a tray icon the admin window hides itself; the tray can show it again.
+        if not relaunch_as_admin("capture --hide-console" if tray else "capture"):
             fail("Capture needs administrator rights (the UAC prompt was declined).")
         print("Capture started in the administrator window. Opening the UI...")
         if not open_when_up(port):
             print(f"The UI did not come up. Check the administrator window, then open http://127.0.0.1:{port}")
+            return
+        if tray:
+            if owns_console():
+                show_console(False)
+            run_tray(port)
         return
 
     cleanup()  # a CA left behind by a crashed session
@@ -151,8 +256,12 @@ def capture():
 
     CAPTURES.mkdir(exist_ok=True)
     session = CAPTURES / time.strftime("session-%Y%m%d-%H%M%S")
-    if not ELEVATED:  # started as admin directly, so nobody else opens the browser
+    if not ELEVATED:  # started as admin directly, so nobody else opens the browser or shows a tray icon
         threading.Thread(target=open_when_up, args=(port,), daemon=True).start()
+        if tray_available():
+            threading.Thread(target=run_tray, args=(port,), daemon=True).start()
+    if "--hide-console" in sys.argv:
+        show_console(False)
     print(f"Capturing. UI: http://127.0.0.1:{port}  Saving to: {session}.mitm")
     print("Stop with Ctrl+C. If nothing shows up, close and reopen the monitored program.\n")
     try:
@@ -186,7 +295,7 @@ def open_session(path):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a not in ("--elevated", "--no-browser")]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     cmd = args[0] if args else "capture"
     if cmd.lower().endswith(".mitm"):
         open_session(cmd)

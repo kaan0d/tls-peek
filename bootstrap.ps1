@@ -1,6 +1,6 @@
 # ============================================================================
 #  bootstrap.ps1
-#  Makes sure Python and mitmproxy are installed (installs them on first run),
+#  Makes sure Python, mitmproxy and the tray icon libraries are installed (installs them on first run),
 #  then runs tlspeek.py with the given arguments (capture / open / cleanup).
 #  Called by tlspeek.cmd. Does not need administrator rights.
 # ============================================================================
@@ -38,11 +38,12 @@ if (-not $py) {
   if (-not $py) { Stop-WithError "Python install failed. Install it by hand from https://www.python.org/downloads/" }
 }
 
-$hasMitm = try { & $py -c "import mitmproxy" 2>$null; $LASTEXITCODE -eq 0 } catch { $false }
-if (-not $hasMitm) {
-  Write-Host "Installing mitmproxy (one time)..." -ForegroundColor Cyan
-  & $py -m pip install --user --upgrade mitmproxy
-  if ($LASTEXITCODE -ne 0) { Stop-WithError "mitmproxy install failed. Try by hand:  $py -m pip install --user mitmproxy" }
+# mitmproxy does the capturing; pystray and Pillow draw the tray icon.
+$hasDeps = try { & $py -c "import mitmproxy, pystray, PIL" 2>$null; $LASTEXITCODE -eq 0 } catch { $false }
+if (-not $hasDeps) {
+  Write-Host "Installing mitmproxy, pystray and Pillow (one time)..." -ForegroundColor Cyan
+  & $py -m pip install --user --upgrade mitmproxy pystray pillow
+  if ($LASTEXITCODE -ne 0) { Stop-WithError "Install failed. Try by hand:  $py -m pip install --user mitmproxy pystray pillow" }
 }
 
 & $py (Join-Path $PSScriptRoot "tlspeek.py") @rest
