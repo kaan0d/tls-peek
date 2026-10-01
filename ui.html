@@ -64,6 +64,12 @@ header h1 { font-size: 14px; margin: 0 8px 0 0; }
 #ev-list li span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ev-list li span { color: var(--muted); }
 #ev-list li span:first-child { color: var(--text); }
+#stop { color: var(--bad); }
+#stop.confirm { background: var(--bad); border-color: var(--bad); color: #fff; }
+#stopped { position: fixed; inset: 0; background: rgb(0 0 0 / .45); display: grid; place-items: center; z-index: 10; }
+#stopped div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; max-width: 420px; }
+#stopped h2 { margin: 0 0 8px; font-size: 16px; }
+#stopped p { margin: 0; color: var(--muted); }
 #pause[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
 .status.paused::before { content: "❚❚"; color: var(--warn); margin-right: 4px; font-size: 10px; }
 
@@ -160,7 +166,12 @@ dialog .top input[type=search] { flex: 1; }
   <span class="spacer"></span>
   <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
   <button id="export" type="button" title="Download all requests as HAR with credentials masked">Export HAR</button>
+  <button id="stop" type="button" title="Stop capturing, save the HAR and remove the certificate">Stop</button>
 </header>
+<div id="stopped" hidden><div role="alertdialog" aria-labelledby="stopped-title">
+  <h2 id="stopped-title">Stopped</h2>
+  <p>The redacted HAR and the session file are in the <code>captures</code> folder, and the certificate is removed. You can close this tab.</p>
+</div></div>
 <div id="filters">
   <input id="search" type="search" placeholder="Search URL, method, status…" aria-label="Search requests">
   <label class="check"><input id="in-bodies" type="checkbox"> in bodies</label>
@@ -260,7 +271,9 @@ function showState(s) {
   return s;
 }
 
+let stopped = false;
 async function poll() {
+  if (stopped) return;
   try {
     const [state, ch] = await Promise.all([api("/api/state"), api("/api/flows?since=" + seq)]);
     showState(state);
@@ -530,6 +543,24 @@ async function applyConfig(newProgram) {
   }
 }
 $("#apply").addEventListener("click", () => applyConfig());
+let stopTimer;
+$("#stop").addEventListener("click", async (e) => {
+  const b = e.currentTarget;
+  if (!b.classList.contains("confirm")) {  // two clicks, so a stray click does not end the capture
+    b.classList.add("confirm"); b.textContent = "Click to stop";
+    stopTimer = setTimeout(() => { b.classList.remove("confirm"); b.textContent = "Stop"; }, 3000);
+    return;
+  }
+  clearTimeout(stopTimer);
+  try { await post("/api/stop", {}); } catch {}
+  stopped = true;
+  $("#stopped").hidden = false;
+  $("#status").className = "status off"; $("#status").textContent = "Stopped";
+});
+// Lets the app stop itself when the last tab closes (a refresh comes back within seconds).
+addEventListener("pagehide", () => {
+  if (!stopped) navigator.sendBeacon("/api/bye", new Blob(["{}"], { type: "application/json" }));
+});
 $("#pause").addEventListener("click", async () => {
   try { showState(await post("/api/pause", { paused: !paused })); applyError = ""; }
   catch (err) { applyError = "Could not pause: " + err.message; }

@@ -158,3 +158,46 @@ finally:
     echo.shutdown()
     (here / "settings.json").write_bytes(settings_before)
 print("ui ok")
+
+# --- Stop button and auto-stop ---
+def start(*extra):
+    global port
+    port = tlspeek.free_port()
+    proc = subprocess.Popen(
+        [mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
+         "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={port}", *extra])
+    for _ in range(50):
+        try:
+            call("/api/state")
+            return proc
+        except OSError:
+            time.sleep(0.2)
+    raise AssertionError("server did not start")
+
+
+def exits_within(proc, seconds):
+    try:
+        proc.wait(seconds)
+        return True
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return False
+
+
+proc = start()
+post("/api/stop", {})
+assert exits_within(proc, 10), "Stop did not end mitmproxy"
+
+proc = start("--set", "ui_auto_stop=60")
+post("/api/bye", {})
+assert exits_within(proc, addon.BYE_GRACE + 8), "closing the last tab did not stop it"
+
+proc = start("--set", "ui_auto_stop=60")
+post("/api/bye", {})
+time.sleep(2)
+call("/api/state")  # a refresh: the tab came back
+assert not exits_within(proc, addon.BYE_GRACE + 4), "a refresh must not stop it"
+
+proc = start("--set", "ui_auto_stop=3")
+assert exits_within(proc, 10), "an idle UI did not stop it"
+print("stop ok")

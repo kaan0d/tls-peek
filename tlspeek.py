@@ -80,6 +80,11 @@ def run_mitmdump(args):
     mitmdump(["-q", "-s", str(addon.HERE / "addon.py"), *args])
 
 
+def auto_stop(settings):
+    """mitmproxy args: stop once no UI tab is open (settings auto_stop_seconds, 0 = never)."""
+    return ["--set", f"ui_auto_stop={int(settings.get('auto_stop_seconds', 300))}"]
+
+
 def cleanup():
     removed = 0
     while removed < 10 and subprocess.run(["certutil", "-delstore", "Root", "mitmproxy"],
@@ -153,7 +158,7 @@ def capture():
     print("Stop with Ctrl+C. If nothing shows up, close and reopen the monitored program.\n")
     try:
         run_mitmdump([
-            "--mode", f"local:{addon.NO_PROGRAM}", "--set", f"confdir={CONFDIR}",
+            "--mode", f"local:{addon.NO_PROGRAM}", "--set", f"confdir={CONFDIR}", *auto_stop(settings),
             "--save-stream-file", f"{session}.mitm", "--set", f"ui_port={port}",
             "--set", "stream_large_bodies=5m",
         ])
@@ -161,7 +166,7 @@ def capture():
         export_har(session)
         cleanup()
     if ELEVATED:
-        input("Press Enter to close")
+        time.sleep(3)  # long enough to read the summary before the window closes
 
 
 def open_session(path):
@@ -177,6 +182,7 @@ def open_session(path):
     print(f"Viewing {path} at http://127.0.0.1:{port}. Stop with Ctrl+C.")
     with tempfile.TemporaryDirectory() as confdir:  # keeps the throwaway CA out of the home folder
         run_mitmdump(["-n", "-r", str(path), "--set", "keepserving=true", "--set", f"confdir={confdir}",
+                      *auto_stop(addon.read_settings()),
                       "--set", f"ui_port={port}", "--set", f"ui_file={path}"])
 
 

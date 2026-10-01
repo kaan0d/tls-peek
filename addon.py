@@ -30,6 +30,7 @@ MAX_FLOWS = 5000  # ponytail: oldest flows drop from the UI past this; the .mitm
 MAX_BODY = 200_000
 MAX_WS_MESSAGES = 1000
 NO_PROGRAM = "tlspeek-no-program.exe"  # local mode needs a target; this matches nothing
+BYE_GRACE = 10  # seconds a closed tab has to come back (a refresh) before auto-stop
 
 # Field names are split into words ("X-Api-Key" -> x, api, key; "accessToken" ->
 # access, token). A field is masked when one of its words is in SECRET_WORDS.
@@ -118,11 +119,16 @@ class TlsPeek:
         self.loop = None
         self.program = ""
         self.host_text = ""
+        self.last_seen = None  # last UI request; None until a tab has connected
+        self.bye_at = None     # when a tab last said it is closing
+        self.watcher = None
 
     def load(self, loader):
         loader.add_option("redact", bool, False, "Mask credentials in flows (for HAR export).")
         loader.add_option("ui_port", int, 0, "Serve the tls-peek web UI on this port (0 = off).")
         loader.add_option("ui_file", str, "", "Session file shown read-only in the UI (open mode).")
+        loader.add_option("ui_auto_stop", int, 0,
+                          "Stop when no UI tab has been open for this many seconds (0 = never).")
 
     def running(self):
         self.loop = asyncio.get_running_loop()
@@ -134,6 +140,28 @@ class TlsPeek:
                 self.apply(settings.get("program", ""), settings.get("host_filter", ""))
             self.server = ThreadingHTTPServer(("127.0.0.1", ctx.options.ui_port), make_handler(self))
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
+            if ctx.options.ui_auto_stop:
+                self.watcher = asyncio.create_task(self.watch_ui())
+
+    async def watch_ui(self):
+        """Stops mitmproxy once every UI tab is gone: right after a tab closes (plus a
+        grace period for refreshes), or when no tab has polled for ui_auto_stop seconds."""
+        while True:
+            await asyncio.sleep(2)
+            if self.last_seen is None:
+                continue
+            now = time.time()
+            closed = self.bye_at is not None and self.bye_at >= self.last_seen and now - self.bye_at > BYE_GRACE
+            if closed or now - self.last_seen > ctx.options.ui_auto_stop:
+                print("[tls-peek] No UI tab is open any more; stopping.")
+                ctx.master.shutdown()
+                return
+
+    def seen(self, bye=False):
+        if bye:
+            self.bye_at = time.time()
+        else:
+            self.last_seen = time.time()
 
     def done(self):
         if self.server:
@@ -343,6 +371,7 @@ def make_handler(addon):
         def do_GET(self):
             if not self.allowed():
                 return
+            addon.seen()
             url = urlparse(self.path)
             q = parse_qs(url.query)
             if url.path == "/":
@@ -388,6 +417,14 @@ def make_handler(addon):
                         raise ValueError("viewing a saved session")
                     addon.configure_capture(body.get("program", ""), body.get("host_filter", ""))
                     return self.send(200, addon.state())
+                if self.path == "/api/bye":
+                    addon.seen(bye=True)
+                    return self.send(200, {})
+                addon.seen()
+                if self.path == "/api/stop":
+                    self.send(200, {})
+                    addon.loop.call_soon_threadsafe(ctx.master.shutdown)
+                    return
                 if self.path == "/api/pause":
                     if ctx.options.ui_file:
                         raise ValueError("viewing a saved session")
