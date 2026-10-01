@@ -54,8 +54,18 @@ header h1 { font-size: 14px; margin: 0 8px 0 0; }
 #host-pick { max-width: 200px; }
 
 #events { background: color-mix(in srgb, var(--warn) 15%, var(--panel)); border-bottom: 1px solid var(--line);
-  padding: 6px 12px; display: none; }
-#events div { margin: 2px 0; }
+  padding: 4px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#events .text { flex: 1; min-width: 0; }
+#events .text small { color: var(--muted); }
+#events button { padding: 2px 8px; }
+#ev-list { flex-basis: 100%; max-height: 140px; overflow: auto; margin: 2px 0 4px; padding: 0; list-style: none;
+  font-family: var(--mono); font-size: 12px; }
+#ev-list li { display: flex; gap: 12px; padding: 1px 0; }
+#ev-list li span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ev-list li span { color: var(--muted); }
+#ev-list li span:first-child { color: var(--text); }
+#pause[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
+.status.paused::before { content: "❚❚"; color: var(--warn); margin-right: 4px; font-size: 10px; }
 
 main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); min-height: 0; }
 #list { overflow: auto; border-right: 1px solid var(--line); }
@@ -145,6 +155,7 @@ dialog .top input[type=search] { flex: 1; }
     <button id="apply" class="primary" type="button">Apply</button>
   </div>
   <div class="field file-only" hidden><label>Viewing</label><span id="file"></span></div>
+  <button id="pause" class="live-only" type="button" aria-pressed="false" title="Stop intercepting new connections and recording">Pause</button>
   <span id="status" class="status">Connecting…</span>
   <span class="spacer"></span>
   <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
@@ -157,7 +168,13 @@ dialog .top input[type=search] { flex: 1; }
   <div class="chips" id="type-chips" role="group" aria-label="Type filter"></div>
   <select id="host-pick" aria-label="Host"><option value="">All hosts</option></select>
 </div>
-<div id="events" role="status"></div>
+<div id="events" role="status" hidden>
+  <span class="text">⚠ <b id="ev-count"></b> did not accept the capture certificate, so their traffic is not decrypted.
+    <small>Pinned, or the app was running before the capture started: restart it.</small></span>
+  <button id="ev-toggle" type="button" aria-expanded="false">Show</button>
+  <button id="ev-close" type="button" aria-label="Dismiss" title="Dismiss until a new host fails">×</button>
+  <ul id="ev-list" hidden></ul>
+</div>
 <main>
   <section id="list" aria-label="Requests">
     <table>
@@ -211,6 +228,8 @@ let tab = "request";
 let current = null;      // detail of the selected flow
 let program = "";
 let applyError = "";
+let paused = false;
+let dismissedAt = 0;     // number of failed hosts when the warning was dismissed
 let bodyHits = null;     // Set of ids matching a body search, or null
 const filter = { status: "all", type: "all", host: "" };
 
@@ -230,9 +249,14 @@ function showState(s) {
   $("#file").textContent = s.file;
   $("#program-btn").innerHTML = s.program ? `<span>${esc(s.program)}</span>` : "<span>Pick program…</span>";
   if (document.activeElement !== $("#host")) $("#host").value = s.host_filter;
-  const ev = $("#events");
-  ev.style.display = s.events.length ? "block" : "none";
-  ev.innerHTML = s.events.map((e) => `<div>⚠ ${esc(e.msg)}</div>`).join("");
+  paused = s.paused;
+  $("#pause").textContent = paused ? "Resume" : "Pause";
+  $("#pause").setAttribute("aria-pressed", paused);
+  const n = s.rejected.length;
+  $("#events").hidden = n === 0 || n <= dismissedAt;
+  $("#ev-count").textContent = n === 1 ? "1 host" : n + " hosts";
+  $("#ev-list").innerHTML = s.rejected.map((e) => `<li><span>${esc(e.host)}</span>
+    <span>${e.reason === "rejected" ? "certificate rejected" : "closed during handshake"}</span><span>×${e.count}</span></li>`).join("");
   return s;
 }
 
@@ -247,8 +271,8 @@ async function poll() {
       render();
       if (selected != null && ch.flows.some((f) => f.id === selected)) loadDetail();
     }
-    $("#status").className = applyError ? "status off" : "status live";
-    $("#status").textContent = applyError || (state.file ? "Saved session" : program ? "Capturing" : "No program");
+    $("#status").className = applyError ? "status off" : paused ? "status paused" : "status live";
+    $("#status").textContent = applyError || (state.file ? "Saved session" : paused ? "Paused" : program ? "Capturing" : "No program");
   } catch {
     $("#status").className = "status off";
     $("#status").textContent = "Disconnected";
@@ -506,6 +530,20 @@ async function applyConfig(newProgram) {
   }
 }
 $("#apply").addEventListener("click", () => applyConfig());
+$("#pause").addEventListener("click", async () => {
+  try { showState(await post("/api/pause", { paused: !paused })); applyError = ""; }
+  catch (err) { applyError = "Could not pause: " + err.message; }
+});
+$("#ev-toggle").addEventListener("click", (e) => {
+  const open = $("#ev-list").hidden;
+  $("#ev-list").hidden = !open;
+  e.target.textContent = open ? "Hide" : "Show";
+  e.target.setAttribute("aria-expanded", open);
+});
+$("#ev-close").addEventListener("click", () => {
+  dismissedAt = $("#ev-list").children.length;
+  $("#events").hidden = true;
+});
 $("#host").addEventListener("keydown", (e) => { if (e.key === "Enter") applyConfig(); });
 
 // --- program picker ---

@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse
 
 from mitmproxy import ctx, http
+from OpenSSL import SSL
 from mitmproxy.addons.savehar import SaveHar
 
 HERE = Path(__file__).parent
@@ -81,6 +82,13 @@ def redact(flow):
         mask_message(flow.response)
 
 
+def quiet_tls_crashes(record):
+    """Drops mitmproxy's "has crashed!" tracebacks for connections that died mid-TLS.
+    Only that one connection is lost; the capture keeps running."""
+    exc = record.exc_info[1] if record.exc_info else None
+    return not isinstance(exc, SSL.Error)
+
+
 def read_settings():
     return json.loads(SETTINGS.read_text("utf-8-sig")) if SETTINGS.exists() else {}
 
@@ -104,7 +112,8 @@ class TlsPeek:
         self.ids = {}         # flow.id -> UI id
         self.seq = 0          # bumps on every change; the UI asks for changes since its last seq
         self.changed = {}     # flow.id -> seq of its last change
-        self.events = []
+        self.rejected = {}    # host -> {"count", "last", "reason"} for failed client TLS handshakes
+        self.paused = False
         self.server = None
         self.loop = None
         self.program = ""
@@ -117,6 +126,8 @@ class TlsPeek:
 
     def running(self):
         self.loop = asyncio.get_running_loop()
+        for h in logging.getLogger().handlers:
+            h.addFilter(quiet_tls_crashes)
         if ctx.options.ui_port and not self.server:
             if not ctx.options.ui_file:
                 settings = read_settings()
@@ -129,11 +140,20 @@ class TlsPeek:
             self.server.shutdown()
 
     def tls_failed_client(self, data):
-        sni = data.conn.sni or "unknown host"
-        msg = (f"Program rejected the mitmproxy certificate for {sni}: probably certificate "
-               "pinning. Traffic to this host cannot be decrypted.")
-        logging.warning(f"[tls-peek] {msg}")
-        self.events.append({"time": time.time(), "msg": msg})
+        # mitmproxy has already turned the OpenSSL error into one of these messages.
+        err = data.conn.error or ""
+        if "does not trust" in err:
+            reason = "rejected"
+        elif "disconnected during the handshake" in err:
+            reason = "closed"
+        else:
+            return  # early closes and version mismatches are not about our certificate
+        host = data.conn.sni or "unknown host"
+        entry = self.rejected.setdefault(host, {"host": host, "count": 0, "reason": reason})
+        entry["count"] += 1
+        entry["last"] = time.time()
+        if reason == "rejected":
+            entry["reason"] = reason
 
     # --- flow tracking (event loop thread) ---
 
@@ -154,8 +174,8 @@ class TlsPeek:
     def websocket_end(self, flow):
         self.touch(flow)
 
-    def touch(self, flow):
-        if not ctx.options.ui_port:
+    def touch(self, flow, force=False):
+        if not ctx.options.ui_port or (self.paused and not force and flow.id not in self.ids):
             return
         if flow.id not in self.ids:
             self.ids[flow.id] = self.dropped + len(self.flows)
@@ -208,17 +228,25 @@ class TlsPeek:
         program = Path(program.strip()).name
         host_filter = host_filter.strip()
         ctx.options.update(
-            mode=[f"local:{program or NO_PROGRAM}"],
+            mode=[f"local:{NO_PROGRAM if self.paused or not program else program}"],
             allow_hosts=[host_regex(host_filter)] if host_filter else [],
         )
         self.program, self.host_text = program, host_filter
+
+    def set_paused(self, paused):
+        """Paused: the program's new connections pass through untouched and nothing is recorded."""
+        self.paused = paused
+        if ctx.options.save_stream_file:
+            ctx.options.update(save_stream_filter="!~all" if paused else "")
+        self.apply(self.program, self.host_text)
 
     def state(self):
         return {
             "program": self.program,
             "host_filter": self.host_text,
             "file": Path(ctx.options.ui_file).name if ctx.options.ui_file else "",
-            "events": self.events[-20:],
+            "paused": self.paused,
+            "rejected": sorted(self.rejected.values(), key=lambda e: -e["last"]),
         }
 
     def configure_capture(self, program, host_filter):
@@ -274,7 +302,7 @@ class TlsPeek:
             f.request.text = body
             f.response = f.error = f.websocket = None
             ctx.master.commands.call("replay.client", [f])
-            self.touch(f)  # show it as pending right away
+            self.touch(f, force=True)  # show it as pending right away, even when paused
             return self.ids[f.id]
 
         return self.on_loop(go)
@@ -359,6 +387,11 @@ def make_handler(addon):
                     if ctx.options.ui_file:
                         raise ValueError("viewing a saved session")
                     addon.configure_capture(body.get("program", ""), body.get("host_filter", ""))
+                    return self.send(200, addon.state())
+                if self.path == "/api/pause":
+                    if ctx.options.ui_file:
+                        raise ValueError("viewing a saved session")
+                    addon.on_loop(lambda: addon.set_paused(bool(body.get("paused"))))
                     return self.send(200, addon.state())
                 if self.path == "/api/resend":
                     new_id = addon.resend(int(body["id"]), body["method"], body["url"],

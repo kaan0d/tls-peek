@@ -11,6 +11,7 @@ administrator rights.
 ## Features
 - **Per-program capture:** pick a running app (or type an `.exe` name); only its traffic is intercepted.
 - **Live switching:** program and host filter change without a restart and are saved to `settings.json`.
+- **Pause/Resume:** while paused, new connections pass through untouched and nothing is recorded.
 - **Request view:** pending requests, status/type/host filters, search in URLs or bodies, pretty JSON.
 - **WebSocket:** sent and received messages per connection.
 - **Edit and resend:** change method, URL, headers or body and send again; the result shows as a new row.
@@ -58,7 +59,7 @@ server: change tracking, pending state, body search, Host guard, live program
 switching and edit-and-resend against a local echo server.
 
 ## Limits
-- **Certificate pinning:** pinned hosts cannot be decrypted. The UI warns per host.
+- **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. The UI lists these hosts in one collapsible bar.
 - **Bodies over 5 MB** are streamed through and not stored or shown.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
 - **Redaction is by field name** (auth, token, password, key, user, code, ...). Free-text

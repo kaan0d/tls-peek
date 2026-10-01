@@ -52,6 +52,28 @@ assert "page=2" in entry["request"]["url"] and '"n": 1' in entry["request"]["pos
 assert "KeepMe/1.0" in har
 print("redaction ok")
 
+# --- console noise and certificate warnings ---
+import logging
+from types import SimpleNamespace
+from OpenSSL import SSL
+
+try:
+    raise SSL.Error([])
+except SSL.Error:
+    rec = logging.LogRecord("x", logging.ERROR, "", 0, "mitmproxy has crashed!", None, sys.exc_info())
+assert not addon.quiet_tls_crashes(rec)
+assert addon.quiet_tls_crashes(logging.LogRecord("x", logging.ERROR, "", 0, "other", None, None))
+
+peek = addon.TlsPeek()
+for sni, err in [("a.com", "The client does not trust the proxy's certificate for a.com (unknown ca)"),
+                 ("a.com", "The client does not trust the proxy's certificate for a.com (unknown ca)"),
+                 ("b.com", "The client disconnected during the handshake. If this happens ..."),
+                 ("c.com", "connection closed early")]:
+    peek.tls_failed_client(SimpleNamespace(conn=SimpleNamespace(sni=sni, error=err)))
+assert peek.rejected["a.com"]["count"] == 2 and peek.rejected["a.com"]["reason"] == "rejected"
+assert peek.rejected["b.com"]["reason"] == "closed" and "c.com" not in peek.rejected
+print("warnings ok")
+
 
 # --- UI server ---
 class Echo(BaseHTTPRequestHandler):
@@ -74,7 +96,7 @@ mitmdump = pathlib.Path(sys.executable).with_name("mitmdump")
 srv = subprocess.Popen(
     [mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
      "--set", f"confdir={tmp / 'conf'}", "--mode", f"local:{addon.NO_PROGRAM}",
-     "-s", here / "addon.py", "--set", f"ui_port={port}"],
+     "-s", here / "addon.py", "--set", f"ui_port={port}", "--save-stream-file", tmp / "saved.mitm"],
 )
 
 
@@ -115,6 +137,11 @@ try:
     status, state = post("/api/config", {"program": r"C:\x\Some App.exe", "host_filter": "api.example.com"})
     assert status == 200 and state["program"] == "Some App.exe", state
     assert json.loads((here / "settings.json").read_text("utf-8"))["program"] == "Some App.exe"
+
+    status, state = post("/api/pause", {"paused": True})
+    assert status == 200 and state["paused"], state
+    status, state = post("/api/pause", {"paused": False})
+    assert status == 200 and not state["paused"], state
 
     status, res = post("/api/resend", {"id": done["id"], "method": "POST",
                                        "url": f"http://127.0.0.1:{echo.server_address[1]}/x",
