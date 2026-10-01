@@ -16,7 +16,7 @@ administrator rights.
 - **Request list:** pending requests, status/type/host/bookmark filters, URL or body search, sortable and resizable columns, waterfall timeline.
 - **Request detail:** headers, query, pretty JSON, WebSocket messages, image and sandboxed HTML previews.
 - **Decoders:** JWTs found in headers, URL or body; Base64; mitmproxy's views (protobuf, gRPC, msgpack, hex, ...).
-- **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version.
+- **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version. Clicking Intercept again turns it off and sends held traffic on unchanged.
 - **Work with requests:** bookmarks and notes, edit and resend, compare two as a diff, copy as cURL/PowerShell/Python.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table for the requests shown.
 - **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default.
@@ -30,7 +30,7 @@ python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on f
 Or build a single `tlspeek.exe` that needs neither:
 ```
 pip install mitmproxy pystray pillow pyinstaller
-pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui.html;." --add-data "home.html;." --add-data "addon.py;." tlspeek.py
+pyinstaller --onefile --noconsole --name tlspeek --hidden-import pystray._win32 --add-data "ui.html;." --add-data "home.html;." --add-data "addon.py;." tlspeek.py
 ```
 The exe lands in `dist\`. Put `settings.json` next to it (optional).
 
@@ -43,7 +43,8 @@ Double-click `tlspeek.cmd` (or `tlspeek.exe`). The start page opens in your brow
 4. Close and reopen the monitored program, then do the action. WinDivert only sees new connections.
 5. Press **Stop** (UI or tray). The redacted HAR lands in `captures\`, the CA is removed and the tab returns to the start page.
 
-Closing the start page with nothing running ends tls-peek.
+Closing the start page with nothing running ends tls-peek. No console window is shown; output goes
+to `tlspeek.log` (tray → Open log) and errors appear as a message box.
 
 Tick rows (Ctrl/Shift-click for several) to compare two or export a selection.
 
@@ -91,4 +92,5 @@ addon.py           mitmproxy addon: UI server, flow tracking, redaction, decoder
 ui.html            web UI
 test_tlspeek.py    redaction and UI API checks
 settings.json      program, host filter, UI port, auto-stop, capture retention
+tlspeek.log        output of the last run (not committed)
 ```

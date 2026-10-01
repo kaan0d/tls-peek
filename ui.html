@@ -234,7 +234,7 @@ dialog .top input[type=search] { flex: 1; }
   </div>
   <div class="field file-only" hidden><label>Viewing</label><span id="file"></span></div>
   <button id="pause" class="live-only" type="button" aria-pressed="false" title="Let new connections through untouched and stop recording">Pause</button>
-  <button id="icpt-btn" class="live-only" type="button" aria-pressed="false" title="Hold matching requests or responses so you can edit them before the program gets them">Intercept</button>
+  <button id="icpt-btn" class="live-only" type="button" aria-pressed="false" title="Hold matching requests or responses so you can edit them before the program gets them; click again to turn off">Intercept</button>
   <button id="held-btn" type="button" hidden title="Show the first held request"></button>
   <button id="release-all" type="button" hidden>Continue all</button>
   <span id="status" class="status">Connecting…</span>
@@ -299,6 +299,18 @@ dialog .top input[type=search] { flex: 1; }
     <label><input type="checkbox" id="ic-req" checked> Hold requests (before they reach the server)</label>
     <label><input type="checkbox" id="ic-resp"> Hold responses (before the program gets them)</label>
     <div class="actions"><button type="button" id="ic-cancel">Cancel</button><button type="button" id="ic-save" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="icpt-off" aria-labelledby="io-title">
+  <form method="dialog" class="ex">
+    <b id="io-title">Turn off intercept?</b>
+    <p id="io-text"></p>
+    <div class="actions">
+      <button type="button" id="io-rule" style="margin-right: auto">Change rule…</button>
+      <button type="button" id="io-cancel">Cancel</button>
+      <button type="button" id="io-off" class="primary">Turn off</button>
+    </div>
   </form>
 </dialog>
 
@@ -968,13 +980,29 @@ function showIntercept(s) {
   document.title = heldCount ? `(${heldCount} held) tls-peek` : "tls-peek";
 }
 
-$("#icpt-btn").addEventListener("click", () => {
+function openRule() {
   $("#ic-on").checked = icpt.enabled || !icpt.url;  // opening it usually means "turn it on"
   $("#ic-url").value = icpt.url;
   $("#ic-method").value = icpt.method;
   $("#ic-req").checked = icpt.request;
   $("#ic-resp").checked = icpt.response;
   $("#icpt-dlg").showModal();
+}
+
+// While intercept is on, the button turns it off (after asking): held traffic goes on unchanged.
+$("#icpt-btn").addEventListener("click", () => {
+  if (!icpt.enabled) return openRule();
+  $("#io-text").textContent = heldCount
+    ? `${heldCount} held ${heldCount === 1 ? "request is" : "requests are"} sent on unchanged, and nothing new will be held.`
+    : "Nothing new will be held.";
+  $("#icpt-off").showModal();
+});
+$("#io-cancel").addEventListener("click", () => $("#icpt-off").close());
+$("#io-rule").addEventListener("click", () => { $("#icpt-off").close(); openRule(); });
+$("#io-off").addEventListener("click", async () => {
+  $("#icpt-off").close();
+  try { showState(await post("/api/intercept", { ...icpt, enabled: false })); applyError = ""; }
+  catch (err) { applyError = "Could not turn off intercept: " + err.message; }
 });
 $("#ic-cancel").addEventListener("click", () => $("#icpt-dlg").close());
 $("#ic-save").addEventListener("click", async () => {
