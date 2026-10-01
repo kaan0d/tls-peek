@@ -73,16 +73,39 @@ header h1 { font-size: 14px; margin: 0 8px 0 0; }
 #pause[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
 .status.paused::before { content: "❚❚"; color: var(--warn); margin-right: 4px; font-size: 10px; }
 
-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); min-height: 0; }
-#list { overflow: auto; border-right: 1px solid var(--line); }
-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
+main { flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; }
+/* drag the list's bottom-right corner to change the split */
+#list { overflow: auto; border-right: 1px solid var(--line); width: 58vw; min-width: 280px; max-width: calc(100vw - 280px); resize: horizontal; }
+table { width: auto; min-width: 100%; border-collapse: collapse; table-layout: fixed; }
+th .sort { border: 0; background: none; padding: 0; font-weight: 600; color: inherit; width: 100%; text-align: inherit; }
+th.num, td.num { text-align: right; }
+td.muted { color: var(--muted); }
+th .grip { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; }
+th .grip:hover { background: var(--accent); }
+.c-pick { text-align: center; padding-left: 4px; padding-right: 0; }
+tbody tr.picked { box-shadow: inset 3px 0 var(--accent); }
+.bar-track { position: relative; height: 10px; }
+.bar { position: absolute; top: 1px; height: 8px; border-radius: 2px; background: var(--accent); min-width: 2px; }
+.bar.pending { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 8px); }
+.bar.error { background: var(--bad); }
+#selection { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+#sel-count { color: var(--muted); }
+#compare { width: min(1000px, calc(100vw - 32px)); }
+#compare-body { padding: 0 0 12px; max-height: 75vh; overflow: auto; }
+#compare h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 12px 6px; }
+#compare .legend { margin: 12px; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.dline { display: block; }
+.ddel { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); display: block; }
+.dadd { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); display: block; }
+.legend .ddel, .legend .dadd { display: inline; padding: 0 4px; border-radius: 3px; }
+.same { margin: 0 12px; color: var(--muted); font-style: italic; }
+th { position: sticky; top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
   border-bottom: 1px solid var(--line); padding: 5px 8px; z-index: 1; }
 td { padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: color-mix(in srgb, var(--sel) 50%, transparent); }
 tbody tr.sel { background: var(--sel); }
-.c-star { width: 30px; text-align: center; padding-left: 4px; padding-right: 0; }
+.c-star { text-align: center; padding-left: 4px; padding-right: 0; }
 .star { border: 0; background: none; padding: 0 2px; color: var(--muted); font-size: 14px; line-height: 1; }
 .star[aria-pressed="true"] { color: var(--warn); }
 #marked-only[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
@@ -95,11 +118,7 @@ iframe.preview { width: calc(100% - 24px); height: 360px; background: #fff; }
 .jwt pre { margin: 0 10px 10px; }
 .jwt .bad { color: var(--bad); }
 #note { display: block; width: calc(100% - 24px); margin: 8px 12px 0; resize: vertical; min-height: 34px; }
-.c-method { width: 64px; font-family: var(--mono); }
-.c-status { width: 58px; font-family: var(--mono); }
-.c-host { width: 26%; }
-.c-type { width: 18%; color: var(--muted); }
-.c-size, .c-ms { width: 72px; text-align: right; color: var(--muted); }
+.c-method, .c-status { font-family: var(--mono); }
 .s1 { color: var(--accent); } .s2 { color: var(--ok); } .s3 { color: var(--accent); } .s4, .s5, .err { color: var(--bad); }
 .pending { color: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
@@ -155,9 +174,8 @@ dialog .top input[type=search] { flex: 1; }
 
 @media (max-width: 800px) {
   main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  #list { border-right: 0; border-bottom: 1px solid var(--line); }
+  #list { border-right: 0; border-bottom: 1px solid var(--line); width: auto; max-width: none; resize: none; }
   #search { width: 100%; }
-  .c-type, .c-ms { display: none; }
 }
 </style>
 </head>
@@ -192,6 +210,11 @@ dialog .top input[type=search] { flex: 1; }
   <div class="chips" id="type-chips" role="group" aria-label="Type filter"></div>
   <select id="host-pick" aria-label="Host"><option value="">All hosts</option></select>
   <div class="chips"><button id="marked-only" type="button" aria-pressed="false" title="Only bookmarked requests">★ Bookmarked</button></div>
+  <div id="selection" hidden>
+    <span id="sel-count"></span>
+    <button id="compare-btn" type="button" title="Select exactly two requests">Compare</button>
+    <button id="sel-clear" type="button">Clear selection</button>
+  </div>
 </div>
 <div id="events" role="status" hidden>
   <span class="text">⚠ <b id="ev-count"></b> did not accept the capture certificate, so their traffic is not decrypted.
@@ -203,8 +226,8 @@ dialog .top input[type=search] { flex: 1; }
 <main>
   <section id="list" aria-label="Requests">
     <table>
-      <thead><tr><th class="c-star" aria-label="Bookmark"></th><th class="c-method">Method</th><th class="c-status">Status</th><th class="c-host">Host</th>
-        <th>Path</th><th class="c-type">Type</th><th class="c-size">Size</th><th class="c-ms">Time</th></tr></thead>
+      <colgroup id="cols"></colgroup>
+      <thead><tr id="head"></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <div id="empty" class="empty">No requests yet.<br>Pick a program, then close and reopen it and do the action.</div>
@@ -219,6 +242,11 @@ dialog .top input[type=search] { flex: 1; }
     <button id="proc-close" type="button">Cancel</button>
   </div>
   <div id="procs"></div>
+</dialog>
+
+<dialog id="compare" aria-label="Compare two requests">
+  <div class="top"><b style="flex: 1">Compare</b><button id="compare-close" type="button">Close</button></div>
+  <div id="compare-body"></div>
 </dialog>
 
 <dialog id="resend" aria-label="Edit and resend">
@@ -369,13 +397,96 @@ async function runSearch() {
 $("#search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 250); });
 $("#in-bodies").addEventListener("change", runSearch);
 
-// --- list ---
-const visible = () => [...flows.values()].filter(matches);
+// --- list: columns, sorting, resizing, selection, timeline ---
+const pathOf = (f) => f.url.replace(/^\w+:\/\/[^/]+/, "") || "/";
+const COLUMNS = [
+  { key: "pick", label: "", width: 30 },
+  { key: "star", label: "", width: 28 },
+  { key: "method", label: "Method", width: 70, sort: (f) => f.method },
+  { key: "status", label: "Status", width: 64, sort: (f) => f.state === "error" ? 1000 : f.status ?? 0 },
+  { key: "host", label: "Host", width: 160, sort: (f) => f.host },
+  { key: "path", label: "Path", width: 240, sort: pathOf },
+  { key: "type", label: "Type", width: 120, sort: (f) => f.type },
+  { key: "size", label: "Size", width: 76, sort: (f) => f.size, num: true },
+  { key: "ms", label: "Time", width: 72, sort: (f) => f.ms ?? -1, num: true },
+  { key: "timeline", label: "Timeline", width: 150, sort: (f) => f.time },
+];
+const store = {  // per-browser UI preferences; storage can be unavailable
+  get(k, d) { try { return JSON.parse(localStorage.getItem("tlspeek." + k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("tlspeek." + k, JSON.stringify(v)); } catch {} },
+};
+const widths = store.get("widths", {});
+let sortBy = store.get("sort", null);  // { key, dir: 1 | -1 } or null = capture order
+const picked = new Set();               // ids ticked for compare / export
+let lastPicked = null;
+
+function renderHead() {
+  $("#cols").innerHTML = COLUMNS.map((c) => {
+    const w = widths[c.key] ?? c.width;
+    return `<col${w ? ` style="width:${w}px"` : ""}>`;
+  }).join("");
+  $("#head").innerHTML = COLUMNS.map((c) => {
+    if (c.key === "pick") return `<th class="c-pick"><input type="checkbox" id="pick-all" aria-label="Select all shown"></th>`;
+    if (!c.sort) return `<th aria-label="Bookmark"></th>`;
+    const dir = sortBy?.key === c.key ? sortBy.dir : 0;
+    return `<th data-key="${c.key}" aria-sort="${dir === 1 ? "ascending" : dir === -1 ? "descending" : "none"}" class="${c.num ? "num" : ""}">
+      <button type="button" class="sort">${c.label}<span aria-hidden="true">${dir === 1 ? " ▲" : dir === -1 ? " ▼" : ""}</span></button>
+      <span class="grip" data-key="${c.key}" aria-hidden="true"></span></th>`;
+  }).join("");
+}
+
+$("#head").addEventListener("click", (e) => {
+  if (e.target.id === "pick-all") {
+    const list = visible();
+    if (e.target.checked) list.forEach((f) => picked.add(f.id)); else picked.clear();
+    render();
+    return;
+  }
+  const th = e.target.closest(".sort")?.closest("th");
+  if (!th) return;
+  const key = th.dataset.key;
+  // asc -> desc -> capture order
+  sortBy = sortBy?.key !== key ? { key, dir: 1 } : sortBy.dir === 1 ? { key, dir: -1 } : null;
+  store.set("sort", sortBy);
+  renderHead();
+  render();
+});
+
+$("#head").addEventListener("pointerdown", (e) => {
+  const grip = e.target.closest(".grip");
+  if (!grip) return;
+  e.preventDefault();
+  const key = grip.dataset.key, th = grip.closest("th"), startX = e.clientX, startW = th.offsetWidth;
+  const col = $("#cols").children[COLUMNS.findIndex((c) => c.key === key)];
+  const move = (ev) => { widths[key] = Math.max(40, startW + ev.clientX - startX); col.style.width = widths[key] + "px"; };
+  const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); store.set("widths", widths); };
+  addEventListener("pointermove", move);
+  addEventListener("pointerup", up);
+});
+
+const visible = () => {
+  const list = [...flows.values()].filter(matches);
+  if (sortBy) {
+    const c = COLUMNS.find((c) => c.key === sortBy.key);
+    list.sort((a, b) => {
+      const x = c.sort(a), y = c.sort(b);
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * sortBy.dir;
+    });
+  }
+  return list;
+};
 
 function statusCell(f) {
   if (f.state === "error") return `<span class="err" title="${esc(f.error)}">ERR</span>`;
   if (f.state === "pending") return `<span class="pending" title="Waiting for response">···</span>`;
   return `<span class="s${String(f.status)[0]}">${f.status}</span>`;
+}
+
+function timelineCell(f, t0, span) {
+  const end = f.ms != null ? f.time + f.ms / 1000 : Date.now() / 1000;
+  const left = ((f.time - t0) / span) * 100, width = Math.max(((end - f.time) / span) * 100, 0.6);
+  const tip = `starts +${(f.time - t0).toFixed(2)} s, ${f.ms != null ? fmtMs(f.ms) : "still waiting"}`;
+  return `<div class="bar-track" title="${tip}"><div class="bar ${f.state}" style="left:${left}%;width:${Math.min(width, 100 - left)}%"></div></div>`;
 }
 
 function render() {
@@ -388,33 +499,103 @@ function render() {
   $("#empty").style.display = list.length ? "none" : "block";
   $("#empty").innerHTML = flows.size ? "No request matches the filters." : "No requests yet.<br>Pick a program, then close and reopen it and do the action.";
   const box = $("#list");
-  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  const atBottom = !sortBy && box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  // Timeline scale: from the first shown request's start to the last one's end.
+  let t0 = Infinity, tEnd = -Infinity;
+  for (const f of list) {
+    t0 = Math.min(t0, f.time);
+    tEnd = Math.max(tEnd, f.ms != null ? f.time + f.ms / 1000 : Date.now() / 1000);
+  }
+  const span = Math.max(tEnd - t0, 0.001);
   $("#rows").innerHTML = list.map((f) => {
-    const path = f.url.replace(/^\w+:\/\/[^/]+/, "") || "/";
     const tags = (f.replay ? `<span class="tag">resent</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
       + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "");
-    return `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}">
+    return `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}">
+      <td class="c-pick"><input type="checkbox" class="pick" ${picked.has(f.id) ? "checked" : ""} aria-label="Select request"></td>
       <td class="c-star"><button type="button" class="star" aria-pressed="${f.marked}" aria-label="Bookmark">${f.marked ? "★" : "☆"}</button></td>
       <td class="c-method">${esc(f.method)}</td><td class="c-status">${statusCell(f)}</td>
-      <td class="c-host" title="${esc(f.host)}">${esc(f.host)}</td><td title="${esc(f.url)}">${tags}${esc(path)}</td>
-      <td class="c-type">${esc(f.type)}</td><td class="c-size">${f.state === "done" ? fmtSize(f.size) : ""}</td>
-      <td class="c-ms">${fmtMs(f.ms)}</td></tr>`;
+      <td title="${esc(f.host)}">${esc(f.host)}</td><td title="${esc(f.url)}">${tags}${esc(pathOf(f))}</td>
+      <td class="muted">${esc(f.type)}</td><td class="num muted">${f.state === "done" ? fmtSize(f.size) : ""}</td>
+      <td class="num muted">${fmtMs(f.ms)}</td><td>${timelineCell(f, t0, span)}</td></tr>`;
   }).join("");
   if (atBottom) box.scrollTop = box.scrollHeight;
+  if ($("#pick-all")) $("#pick-all").checked = list.length > 0 && list.every((f) => picked.has(f.id));
+  $("#selection").hidden = picked.size === 0;
+  $("#sel-count").textContent = `${picked.size} selected`;
+  $("#compare-btn").disabled = picked.size !== 2;
 }
 
 $("#rows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr");
+  if (!tr) return;
+  const id = Number(tr.dataset.id);
   const star = e.target.closest(".star");
   if (star) {
-    const id = Number(star.closest("tr").dataset.id);
     post("/api/mark", { id, marked: star.getAttribute("aria-pressed") !== "true" }).catch(() => {});
     return;
   }
-  const tr = e.target.closest("tr");
-  if (tr) select(Number(tr.dataset.id));
+  if (e.target.classList.contains("pick") || e.ctrlKey || e.metaKey || e.shiftKey) {
+    if (e.shiftKey && lastPicked != null) {  // range, in the order shown
+      const ids = visible().map((f) => f.id);
+      const [a, b] = [ids.indexOf(lastPicked), ids.indexOf(id)].sort((x, y) => x - y);
+      ids.slice(a, b + 1).forEach((x) => picked.add(x));
+    } else if (picked.has(id)) picked.delete(id); else picked.add(id);
+    lastPicked = id;
+    render();
+    return;
+  }
+  select(id);
 });
-$("#clear").addEventListener("click", () => { clearedBefore = Math.max(0, ...flows.keys()) + 1; render(); });
+$("#sel-clear").addEventListener("click", () => { picked.clear(); render(); });
+$("#clear").addEventListener("click", () => { clearedBefore = Math.max(0, ...flows.keys()) + 1; picked.clear(); render(); });
 $("#export").addEventListener("click", () => { location.href = "/api/har"; });
+renderHead();
+
+// --- compare two requests ---
+function lineDiff(a, b) {
+  const x = a.split("\n"), y = b.split("\n");
+  if (x.length * y.length > 4e6) return null;
+  const n = x.length, m = y.length, w = m + 1, L = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      L[i * w + j] = x[i] === y[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (x[i] === y[j]) { out.push([" ", x[i]]); i++; j++; }
+    else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) out.push(["-", x[i++]]);
+    else out.push(["+", y[j++]]);
+  }
+  while (i < n) out.push(["-", x[i++]]);
+  while (j < m) out.push(["+", y[j++]]);
+  return out;
+}
+
+function diffHtml(a, b) {
+  if (a === b) return `<div class="same">identical</div>`;
+  const lines = lineDiff(a, b);
+  if (!lines) return `<div class="same">too long to compare line by line</div>`;
+  const cls = { " ": "", "-": "ddel", "+": "dadd" };
+  return `<pre class="diff">${lines.map(([t, s]) => `<span class="dline ${cls[t]}">${t} ${esc(s)}</span>`).join("")}</pre>`;
+}
+
+const headerText = (msg) => msg ? msg.headers.map(([k, v]) => `${k}: ${v}`).sort().join("\n") : "";
+const bodyText = (msg) => msg ? prettyBody(msg) : "";
+
+$("#compare-btn").addEventListener("click", async () => {
+  const [a, b] = await Promise.all([...picked].map((id) => api("/api/flow/" + id)));
+  const line = (d) => `${d.summary.method} ${d.summary.url} → ${d.summary.status ?? d.summary.state}`;
+  $("#compare-body").innerHTML = `
+    <p class="legend"><span class="ddel">- A</span> ${esc(line(a))}<br><span class="dadd">+ B</span> ${esc(line(b))}</p>
+    <h3>Request line</h3>${diffHtml(`${a.summary.method} ${a.summary.url}`, `${b.summary.method} ${b.summary.url}`)}
+    <h3>Request headers</h3>${diffHtml(headerText(a.request), headerText(b.request))}
+    <h3>Request body</h3>${diffHtml(bodyText(a.request), bodyText(b.request))}
+    <h3>Response status</h3>${diffHtml(String(a.summary.status ?? a.summary.state), String(b.summary.status ?? b.summary.state))}
+    <h3>Response headers</h3>${diffHtml(headerText(a.response), headerText(b.response))}
+    <h3>Response body</h3>${diffHtml(bodyText(a.response), bodyText(b.response))}`;
+  $("#compare").showModal();
+});
+$("#compare-close").addEventListener("click", () => $("#compare").close());
 
 // --- detail ---
 function select(id) {
