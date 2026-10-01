@@ -486,9 +486,13 @@ class Home:
         """Called every second: tidy up after a child that ended."""
         if self.child is not None and not self.child_alive():
             self.child = None
-            # The tab normally comes back to the start page right away; if it does not
-            # (closed together with the capture), end tls-peek soon.
-            self.last_seen, self.bye_at = None, None
+            # Forget page visits from before the child ended (the tab left for the capture),
+            # keep ones from the tab coming back. If it never comes back, end tls-peek soon.
+            ended = time.time() - 2  # tick runs every second, so the end was at most ~1 s ago
+            if self.last_seen is not None and self.last_seen < ended:
+                self.last_seen = None
+            if self.bye_at is not None and self.bye_at < ended:
+                self.bye_at = None
             self.started, self.wait_for_tab = time.time(), 30
             if self.icon:
                 self.icon.stop()
