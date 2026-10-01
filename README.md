@@ -8,12 +8,13 @@ ignore the system proxy. Needs administrator rights.
 > credentials and personal data: keep them private and delete them when done.
 
 ## Features
-- **Per-program capture:** only the picked `.exe` is intercepted, not the whole machine.
-- **Program picker:** choose from running processes, no JSON editing needed.
+- **Own web UI:** pick the program, set the host filter and inspect traffic at http://127.0.0.1:8081.
+- **Live switching:** program and host filter change without a restart and are saved to `settings.json`.
+- **Request view:** search, status colors, headers, query, pretty JSON bodies, copy URL or cURL.
 - **Fresh CA per session:** generated in `.mitmproxy\`, untrusted and deleted on exit.
-- **Saved sessions:** every capture streams to `captures\<program>-<time>.mitm`.
-- **Redacted HAR export:** on exit, credential headers, query params, form and JSON fields are masked.
-- **Pinning warning:** the console says when the program rejects the certificate.
+- **Saved sessions:** every capture streams to `captures\session-<time>.mitm`.
+- **Redacted HAR export:** from the UI button or on exit, with credential headers, query params, form and JSON fields masked.
+- **Pinning warning:** the UI shows when the program rejects the certificate.
 
 ## Setup
 ```
@@ -21,47 +22,40 @@ python -m pip install --user mitmproxy
 ```
 
 ## Usage
-Double-click `tlspeek.cmd`:
+Double-click `tlspeek.cmd`, choose **1** and accept the UAC prompt. The UI opens in your browser.
 
-| Key | Action |
-|---|---|
-| 1 | Pick the program to monitor (saved to `settings.json`) |
-| 2 | Start capture (UAC prompt). The UI opens at http://127.0.0.1:8081 |
-| 3 | Cleanup, only if the capture window was closed without Ctrl+C |
+1. Click **Program** and pick the app (tick **Background** for tray apps, or type an `.exe` name and press Enter).
+2. Optionally enter a host filter such as `api.example.com` and press **Apply**. Empty means all traffic.
+3. Close and reopen the monitored program, then do the action. WinDivert only sees new connections.
+4. Press **Ctrl+C** in the capture window to stop. It writes `captures\*.har` (redacted) and removes the CA.
 
-Then:
-1. Close and reopen the monitored program. WinDivert only sees new connections.
-2. Do the action in the program. Requests appear in the browser UI.
-3. Press **Ctrl+C** in the capture window. It writes `captures\*.har`
-   (redacted) and removes the CA.
-
+If the window was closed without Ctrl+C, run `tlspeek.cmd` and choose **2** (cleanup).
 Reopen a full, unredacted session later: `mitmweb -r captures\<file>.mitm`.
 
-`settings.json`:
-```json
-{ "program": "MyApp.exe", "host_filter": "api.example.com", "ui_port": 8081 }
-```
-`host_filter` is optional (empty = all traffic). A value containing `\` is used as a regex.
+A host filter containing `\` is used as a regex as-is.
 
 ## Verification
 ```
 python test_tlspeek.py
 ```
-Builds a flow with secrets in the header, query, JSON body and cookie. Then
-checks that the redacted HAR contains none of them.
+Checks that the redacted HAR contains no secrets from the header, query, JSON
+body and cookie. Then starts the UI server and checks the flows API, the Host
+guard and live program switching.
 
 ## Limits
-- **Certificate pinning:** pinned hosts cannot be decrypted. The console warns per host.
-- **Closing the window** instead of Ctrl+C skips the export and cleanup. Run option 3.
+- **Certificate pinning:** pinned hosts cannot be decrypted. The UI warns per host.
+- **Closing the window** instead of Ctrl+C skips the export and cleanup. Run option 2.
+- **The UI keeps the last 5000 requests** and shows them once the response arrives. The `.mitm` file keeps all of them.
 - **Redaction is by field name** (auth, token, pass, key, user, code, ...). Free-text
   personal data in bodies is not masked. Check the HAR before you share it.
 
 ## Layout
 ```
-tlspeek.cmd        launcher menu
-mitm-capture.ps1   picker + capture session
+tlspeek.cmd        launcher menu (capture / cleanup)
+mitm-capture.ps1   CA setup, runs mitmdump with the addon, export on exit
 mitm-cleanup.ps1   untrust and delete CA, stop mitmproxy
-tlspeek.py         mitmproxy addon: pinning warning, redaction
-test_tlspeek.py    redaction check
-settings.json      program, host filter, UI port
+tlspeek.py         mitmproxy addon: UI server, pinning warning, redaction
+ui.html            web UI
+test_tlspeek.py    redaction and UI API check
+settings.json      program, host filter, UI port (written by the UI)
 ```
