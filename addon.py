@@ -164,6 +164,8 @@ class TlsPeek:
         self.changed = {}     # flow.id -> seq of its last change
         self.rejected = {}    # host -> {"count", "last", "reason"} for failed client TLS handshakes
         self.paused = False
+        # Intercept rule: hold matching requests and/or responses until the UI releases them.
+        self.icpt = {"enabled": False, "url": "", "method": "", "request": True, "response": False}
         self.server = None
         self.loop = None
         self.program = ""
@@ -185,7 +187,7 @@ class TlsPeek:
         for h in logging.getLogger().handlers:
             h.addFilter(quiet_tls_crashes)
         if ctx.options.ui_port and not self.server:
-            if not ctx.options.ui_file:
+            if not ctx.options.ui_file and ctx.options.mode[0].startswith("local"):
                 settings = read_settings()
                 self.apply(settings.get("program", ""), settings.get("host_filter", ""))
             self.server = ThreadingHTTPServer(("127.0.0.1", ctx.options.ui_port), make_handler(self))
@@ -236,12 +238,78 @@ class TlsPeek:
     # --- flow tracking (event loop thread) ---
 
     def request(self, flow):
+        self.hold_if_matching(flow, "request")
         self.touch(flow)
 
     def response(self, flow):
         if ctx.options.redact:
             redact(flow)
+        self.hold_if_matching(flow, "response")
         self.touch(flow)
+
+    # --- intercept ---
+
+    def hold_if_matching(self, flow, phase):
+        """Holds the flow (the program waits) when it matches the intercept rule."""
+        r = self.icpt
+        if (not r["enabled"] or not r[phase] or self.paused or flow.is_replay or not ctx.options.ui_port
+                or (r["url"] and r["url"].lower() not in flow.request.pretty_url.lower())
+                or (r["method"] and flow.request.method.upper() != r["method"].upper())):
+            return
+        flow.intercept()
+
+    def set_intercept(self, rule):
+        self.icpt = {
+            "enabled": bool(rule.get("enabled")),
+            "url": str(rule.get("url", "")).strip(),
+            "method": str(rule.get("method", "")).strip().upper(),
+            "request": bool(rule.get("request", True)),
+            "response": bool(rule.get("response", False)),
+        }
+        if not self.icpt["enabled"]:
+            self.on_loop(self.release_all)
+
+    def release(self, ui_id, drop=False, request=None, response=None):
+        """Lets a held flow go on, with the edits made in the UI, or drops it."""
+        f = self.get(ui_id)
+        if f is None or not f.intercepted:
+            raise ValueError("this request is no longer held")
+
+        def go():
+            if not f.intercepted:
+                raise ValueError("this request is no longer held")
+            phase = "response" if f.response else "request"
+            edits = response if phase == "response" else request
+            if edits and not drop:
+                msg = f.response if phase == "response" else f.request
+                if phase == "response":
+                    msg.status_code = int(edits["status"])
+                else:
+                    msg.method = edits["method"]
+                    msg.url = edits["url"]
+                msg.headers.clear()
+                for k, v in edits.get("headers", []):
+                    msg.headers.add(k, v)
+                msg.text = edits.get("body", "")
+                f.metadata.setdefault("tlspeek_edited", []).append(phase)
+            # kill() alone would leave the proxy waiting on the hold forever: release, then kill.
+            f.resume()
+            if drop:
+                f.kill()
+            elif edits and phase == "response":
+                # The session file got the original response before it was edited; save what the program received.
+                save = ctx.master.addons.get("save")
+                if save and save.stream:
+                    save.save_flow(f)
+            self.touch(f, force=True)
+
+        self.on_loop(go)
+
+    def release_all(self):
+        for f in list(self.flows):
+            if f.intercepted:
+                f.resume()
+                self.touch(f, force=True)
 
     def error(self, flow):
         self.touch(flow)
@@ -277,7 +345,9 @@ class TlsPeek:
 
     def summary(self, f):
         r = f.response
-        if f.error:
+        if f.intercepted:
+            state = "held"
+        elif f.error:
             state = "error"
         elif r is None:
             state = "pending"
@@ -299,6 +369,8 @@ class TlsPeek:
             "replay": bool(f.is_replay),
             "marked": bool(f.marked),
             "note": f.comment,
+            "held": ("response" if r else "request") if f.intercepted else None,
+            "edited": f.metadata.get("tlspeek_edited", []),
         }
 
     # --- called from the UI thread ---
@@ -332,6 +404,8 @@ class TlsPeek:
             "file": Path(ctx.options.ui_file).name if ctx.options.ui_file else "",
             "paused": self.paused,
             "home": ctx.options.ui_home,
+            "intercept": self.icpt,
+            "held": sum(1 for f in list(self.flows) if f.intercepted),
             "rejected": sorted(self.rejected.values(), key=lambda e: -e["last"]),
         }
 
@@ -532,6 +606,17 @@ def make_handler(addon):
                     self.send(200, {})
                     addon.loop.call_soon_threadsafe(ctx.master.shutdown)
                     return
+                if self.path == "/api/intercept":
+                    if ctx.options.ui_file:
+                        raise ValueError("viewing a saved session")
+                    addon.set_intercept(body)
+                    return self.send(200, addon.state())
+                if self.path == "/api/release":
+                    addon.release(int(body["id"]), bool(body.get("drop")), body.get("request"), body.get("response"))
+                    return self.send(200, {})
+                if self.path == "/api/release-all":
+                    addon.on_loop(addon.release_all)
+                    return self.send(200, {})
                 if self.path == "/api/pause":
                     if ctx.options.ui_file:
                         raise ValueError("viewing a saved session")

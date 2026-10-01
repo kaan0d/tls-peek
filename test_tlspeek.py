@@ -354,3 +354,87 @@ finally:
     home.kill()
     fake.unlink(missing_ok=True)
 print("home ok")
+
+# --- intercept: hold, edit and release requests and responses of a real proxied call ---
+class Upper(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"server got:" + body)
+
+    def log_message(self, *args):
+        pass
+
+
+upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upper)
+threading.Thread(target=upstream.serve_forever, daemon=True).start()
+proxy_port, port = tlspeek.free_port(), tlspeek.free_port()
+proxy = subprocess.Popen([mitmdump, "-q", "--mode", f"regular@{proxy_port}", "--set", f"confdir={tmp / 'conf'}",
+                          "-s", here / "addon.py", "--set", f"ui_port={port}"])
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": f"http://127.0.0.1:{proxy_port}"}))
+results = {}
+
+
+def program_call(key, body):
+    """What the monitored program does: one POST that waits while it is held."""
+    try:
+        with opener.open(urllib.request.Request(f"http://127.0.0.1:{upstream.server_address[1]}/x",
+                                                data=body, method="POST"), timeout=20) as r:
+            results[key] = r.read().decode()
+    except Exception as e:
+        results[key] = f"error: {e}"
+
+
+def held_flow():
+    for _ in range(50):
+        held = [f for f in call(f"/api/flows")[1]["flows"] if f["state"] == "held"]
+        if held:
+            return held[0]
+        time.sleep(0.2)
+    raise AssertionError("nothing was held")
+
+
+try:
+    for _ in range(50):
+        try:
+            call("/api/state")
+            break
+        except OSError:
+            time.sleep(0.2)
+    status, st = post("/api/intercept", {"enabled": True, "url": "/x", "request": True, "response": True})
+    assert status == 200 and st["intercept"]["enabled"], st
+
+    t = threading.Thread(target=program_call, args=("edited", b"original"))
+    t.start()
+    f = held_flow()
+    assert f["held"] == "request" and call("/api/state")[1]["held"] == 1
+    time.sleep(1)
+    assert "edited" not in results, "the program must wait while its request is held"
+    post("/api/release", {"id": f["id"], "request": {"method": "POST", "url": f["url"], "headers": [["content-type", "text/plain"]], "body": "changed"}})
+    f = held_flow()  # now the response is held
+    assert f["held"] == "response", f
+    post("/api/release", {"id": f["id"], "response": {"status": 201, "headers": [["content-type", "text/plain"]], "body": "fake answer"}})
+    t.join(10)
+    assert results["edited"] == "fake answer", results
+    detail = call(f"/api/flow/{f['id']}")[1]
+    assert detail["request"]["body"] == "changed" and detail["summary"]["edited"] == ["request", "response"], detail
+
+    t = threading.Thread(target=program_call, args=("dropped", b"x"))
+    t.start()
+    f = held_flow()
+    post("/api/release", {"id": f["id"], "drop": True})
+    t.join(10)
+    assert results["dropped"].startswith("error"), results
+
+    t = threading.Thread(target=program_call, args=("off", b"y"))
+    t.start()
+    held_flow()
+    post("/api/intercept", {"enabled": False})  # turning intercept off lets everything go
+    t.join(10)
+    assert results["off"] == "server got:y", results
+finally:
+    proxy.kill()
+    upstream.shutdown()
+print("intercept ok")
