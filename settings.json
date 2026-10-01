@@ -1,0 +1,9 @@
+{
+  "_comment": "Program to monitor. If host_filter is EMPTY, all traffic from the program is decrypted (filter is optional).",
+
+  "program": "MyApp.exe",
+
+  "host_filter": "api\\.example\\.com",
+
+  "ui_port": 8081
+}
