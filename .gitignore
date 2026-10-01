@@ -2,3 +2,4 @@
 *.har
 .mitmproxy/
 captures/
+__pycache__/
