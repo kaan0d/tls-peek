@@ -107,16 +107,15 @@ def prune_captures(keep_days):
 def export_har(session):
     """Writes session.har from session.mitm with credentials masked."""
     from mitmproxy import http, io
-    from mitmproxy.addons.savehar import SaveHar
 
     src = session.with_suffix(".mitm")
     if not src.exists() or src.stat().st_size == 0:
         return
     with open(src, "rb") as fo:
-        flows = [f for f in io.FlowReader(fo).stream() if isinstance(f, http.HTTPFlow) and f.response]
-    for f in flows:
-        addon.redact(f)
-    session.with_suffix(".har").write_text(json.dumps(SaveHar().make_har(flows), indent=2), "utf-8")
+        # A flow saved again after a bookmark or note appears twice; the last copy wins.
+        flows = {f.id: f for f in io.FlowReader(fo).stream() if isinstance(f, http.HTTPFlow) and f.response}
+    har = addon.make_har(list(flows.values()))
+    session.with_suffix(".har").write_text(json.dumps(har, indent=2), "utf-8")
     print(f"Saved redacted HAR: {session.with_suffix('.har')}")
 
 

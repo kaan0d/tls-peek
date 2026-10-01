@@ -201,3 +201,27 @@ assert not exits_within(proc, addon.BYE_GRACE + 4), "a refresh must not stop it"
 proc = start("--set", "ui_auto_stop=3")
 assert exits_within(proc, 10), "an idle UI did not stop it"
 print("stop ok")
+
+# --- bookmarks and notes survive in the session file ---
+saved = tmp / "marks.mitm"
+proc = start("--save-stream-file", saved)
+for _ in range(50):
+    flows = call("/api/flows")[1]["flows"]
+    if len(flows) == 2:
+        break
+    time.sleep(0.2)
+first = flows[0]["id"]
+assert post("/api/mark", {"id": first, "marked": True, "note": "login call"})[0] == 200
+ch = call("/api/flows")[1]
+mine = next(f for f in ch["flows"] if f["id"] == first)
+assert mine["marked"] and mine["note"] == "login call", mine
+proc.kill()
+proc.wait()
+
+with open(saved, "rb") as fo:
+    copies = [f for f in io.FlowReader(fo).stream() if f.comment]
+assert copies and copies[-1].marked and copies[-1].comment == "login call"
+tlspeek.export_har(saved.with_suffix(""))
+har_entries = json.loads(saved.with_suffix(".har").read_text())["log"]["entries"]
+assert len(har_entries) == 1 and har_entries[0]["comment"] == "login call", har_entries
+print("marks ok")

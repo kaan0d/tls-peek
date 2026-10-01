@@ -90,6 +90,19 @@ def quiet_tls_crashes(record):
     return not isinstance(exc, SSL.Error)
 
 
+def make_har(flows, mask=True):
+    """HAR of the given flows (copies are masked, the originals stay intact); notes become entry comments."""
+    flows = [f.copy() for f in flows]
+    if mask:
+        for f in flows:
+            redact(f)
+    har = SaveHar().make_har(flows)
+    for entry, f in zip(har["log"]["entries"], flows):
+        if f.comment:
+            entry["comment"] = f.comment
+    return har
+
+
 def read_settings():
     return json.loads(SETTINGS.read_text("utf-8-sig")) if SETTINGS.exists() else {}
 
@@ -205,7 +218,12 @@ class TlsPeek:
     def touch(self, flow, force=False):
         if not ctx.options.ui_port or (self.paused and not force and flow.id not in self.ids):
             return
-        if flow.id not in self.ids:
+        if flow.id in self.ids:
+            # A saved session can hold a flow twice (re-saved after a note); keep the newest copy.
+            i = self.ids[flow.id] - self.dropped
+            if self.flows[i] is not flow:
+                self.flows[i] = flow
+        else:
             self.ids[flow.id] = self.dropped + len(self.flows)
             self.flows.append(flow)
             if len(self.flows) > MAX_FLOWS:
@@ -242,6 +260,8 @@ class TlsPeek:
             "error": f.error.msg if f.error else None,
             "ws": len(f.websocket.messages) if f.websocket else None,
             "replay": bool(f.is_replay),
+            "marked": bool(f.marked),
+            "note": f.comment,
         }
 
     # --- called from the UI thread ---
@@ -335,11 +355,27 @@ class TlsPeek:
 
         return self.on_loop(go)
 
+    def mark(self, ui_id, marked=None, note=None):
+        """Bookmark and note a flow. In a live capture the flow is saved again, so the
+        session file keeps them (the newest copy of a flow wins when it is read back)."""
+        f = self.get(ui_id)
+        if f is None:
+            raise ValueError("flow gone")
+
+        def go():
+            if marked is not None:
+                f.marked = ":star:" if marked else ""
+            if note is not None:
+                f.comment = note
+            save = ctx.master.addons.get("save")
+            if save and save.stream and not f.live:
+                save.save_flow(f)
+            self.touch(f, force=True)
+
+        self.on_loop(go)
+
     def har(self):
-        flows = [f.copy() for f in list(self.flows) if f.response]
-        for f in flows:
-            redact(f)
-        return SaveHar().make_har(flows)
+        return make_har([f for f in list(self.flows) if f.response])
 
 
 def make_handler(addon):
@@ -430,6 +466,9 @@ def make_handler(addon):
                         raise ValueError("viewing a saved session")
                     addon.on_loop(lambda: addon.set_paused(bool(body.get("paused"))))
                     return self.send(200, addon.state())
+                if self.path == "/api/mark":
+                    addon.mark(int(body["id"]), body.get("marked"), body.get("note"))
+                    return self.send(200, {})
                 if self.path == "/api/resend":
                     new_id = addon.resend(int(body["id"]), body["method"], body["url"],
                                           body.get("headers", []), body.get("body", ""))
