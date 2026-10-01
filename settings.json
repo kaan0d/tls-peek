@@ -1,9 +1,7 @@
 {
-  "_comment": "Saved by the tls-peek UI. program: .exe to monitor. host_filter: optional plain domain like api.example.com (empty = all traffic). ui_port: port of the UI.",
-
+  "_comment": "Saved by the tls-peek UI. program: .exe to monitor. host_filter: optional plain domain like api.example.com (empty = all traffic). ui_port: port of the UI. keep_days: captures older than this are deleted (0 = keep all).",
   "program": "MyApp.exe",
-
   "host_filter": "api.example.com",
-
-  "ui_port": 8081
+  "ui_port": 8081,
+  "keep_days": 7
 }
