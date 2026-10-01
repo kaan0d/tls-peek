@@ -73,10 +73,15 @@ header h1 { font-size: 14px; margin: 0 8px 0 0; }
 #pause[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
 .status.paused::before { content: "❚❚"; color: var(--warn); margin-right: 4px; font-size: 10px; }
 
-main { flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; }
-/* drag the list's bottom-right corner to change the split */
-#list { overflow: auto; border-right: 1px solid var(--line); width: 58vw; min-width: 280px; max-width: calc(100vw - 280px); resize: horizontal; }
-table { width: auto; min-width: 100%; border-collapse: collapse; table-layout: fixed; }
+main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+main:not(.has-detail) #detail { display: none; }
+main.has-detail { grid-template-columns: auto minmax(0, 1fr); }
+#list { overflow: auto; }
+/* with the detail open, drag the list's bottom-right corner to change the split */
+main.has-detail #list { border-right: 1px solid var(--line); width: 58vw; min-width: 280px; max-width: calc(100vw - 280px); resize: horizontal; }
+/* Path has no fixed width: it takes whatever the other columns leave */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+#close-detail { font-size: 16px; line-height: 1; padding: 3px 9px; }
 th .sort { border: 0; background: none; padding: 0; font-weight: 600; color: inherit; width: 100%; text-align: inherit; }
 th.num, td.num { text-align: right; }
 td.muted { color: var(--muted); }
@@ -189,8 +194,8 @@ dialog .top input[type=search] { flex: 1; }
 #resend-error { color: var(--bad); margin-right: auto; }
 
 @media (max-width: 800px) {
-  main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  #list { border-right: 0; border-bottom: 1px solid var(--line); width: auto; max-width: none; resize: none; }
+  main.has-detail { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }
+  main.has-detail #list { border-right: 0; border-bottom: 1px solid var(--line); width: auto; max-width: none; resize: none; }
   #search { width: 100%; }
 }
 </style>
@@ -249,7 +254,7 @@ dialog .top input[type=search] { flex: 1; }
     </table>
     <div id="empty" class="empty">No requests yet.<br>Pick a program, then close and reopen it and do the action.</div>
   </section>
-  <section id="detail" aria-label="Request detail"><div class="empty">Select a request.</div></section>
+  <section id="detail" aria-label="Request detail"></section>
 </main>
 
 <dialog id="picker" aria-label="Pick program">
@@ -439,7 +444,7 @@ const COLUMNS = [
   { key: "method", label: "Method", width: 70, sort: (f) => f.method },
   { key: "status", label: "Status", width: 64, sort: (f) => f.state === "error" ? 1000 : f.status ?? 0 },
   { key: "host", label: "Host", width: 160, sort: (f) => f.host },
-  { key: "path", label: "Path", width: 240, sort: pathOf },
+  { key: "path", label: "Path", width: null, sort: pathOf },
   { key: "type", label: "Type", width: 120, sort: (f) => f.type },
   { key: "size", label: "Size", width: 76, sort: (f) => f.size, num: true },
   { key: "ms", label: "Time", width: 72, sort: (f) => f.ms ?? -1, num: true },
@@ -450,22 +455,45 @@ const store = {  // per-browser UI preferences; storage can be unavailable
   set(k, v) { try { localStorage.setItem("tlspeek." + k, JSON.stringify(v)); } catch {} },
 };
 const widths = store.get("widths", {});
+delete widths.path;  // Path always takes the remaining width
+const PATH_MIN = 140;  // Path never gets narrower than this; columns hide first
+const DROP_ORDER = ["timeline", "type", "size", "ms"];  // hidden in this order when space runs out
+let hiddenCols = new Set();
+const shownCols = () => COLUMNS.filter((c) => !hiddenCols.has(c.key));
+
+function fitColumns() {
+  const room = $("#list").clientWidth;
+  const fixed = (c) => widths[c.key] ?? c.width ?? 0;
+  const next = new Set();
+  let need = COLUMNS.reduce((n, c) => n + fixed(c), 0) + PATH_MIN;
+  for (const key of DROP_ORDER) {
+    if (need <= room) break;
+    next.add(key);
+    need -= fixed(COLUMNS.find((c) => c.key === key));
+  }
+  if ([...next].join() !== [...hiddenCols].join()) {
+    hiddenCols = next;
+    renderHead();
+    render();
+  }
+}
+new ResizeObserver(fitColumns).observe($("#list"));
 let sortBy = store.get("sort", null);  // { key, dir: 1 | -1 } or null = capture order
 const picked = new Set();               // ids ticked for compare / export
 let lastPicked = null;
 
 function renderHead() {
-  $("#cols").innerHTML = COLUMNS.map((c) => {
+  $("#cols").innerHTML = shownCols().map((c) => {
     const w = widths[c.key] ?? c.width;
     return `<col${w ? ` style="width:${w}px"` : ""}>`;
   }).join("");
-  $("#head").innerHTML = COLUMNS.map((c) => {
+  $("#head").innerHTML = shownCols().map((c) => {
     if (c.key === "pick") return `<th class="c-pick"><input type="checkbox" id="pick-all" aria-label="Select all shown"></th>`;
     if (!c.sort) return `<th aria-label="Bookmark"></th>`;
     const dir = sortBy?.key === c.key ? sortBy.dir : 0;
     return `<th data-key="${c.key}" aria-sort="${dir === 1 ? "ascending" : dir === -1 ? "descending" : "none"}" class="${c.num ? "num" : ""}">
       <button type="button" class="sort">${c.label}<span aria-hidden="true">${dir === 1 ? " ▲" : dir === -1 ? " ▼" : ""}</span></button>
-      <span class="grip" data-key="${c.key}" aria-hidden="true"></span></th>`;
+      ${c.width ? `<span class="grip" data-key="${c.key}" aria-hidden="true"></span>` : ""}</th>`;
   }).join("");
 }
 
@@ -491,9 +519,9 @@ $("#head").addEventListener("pointerdown", (e) => {
   if (!grip) return;
   e.preventDefault();
   const key = grip.dataset.key, th = grip.closest("th"), startX = e.clientX, startW = th.offsetWidth;
-  const col = $("#cols").children[COLUMNS.findIndex((c) => c.key === key)];
+  const col = $("#cols").children[shownCols().findIndex((c) => c.key === key)];
   const move = (ev) => { widths[key] = Math.max(40, startW + ev.clientX - startX); col.style.width = widths[key] + "px"; };
-  const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); store.set("widths", widths); };
+  const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); store.set("widths", widths); fitColumns(); };
   addEventListener("pointermove", move);
   addEventListener("pointerup", up);
 });
@@ -524,6 +552,7 @@ function timelineCell(f, t0, span) {
 }
 
 function render() {
+  $("main").classList.toggle("has-detail", selected != null || statsOpen);
   const hosts = [...new Set([...flows.values()].map((f) => f.host))].sort();
   const pick = $("#host-pick");
   if (pick.options.length - 1 !== hosts.length) {
@@ -541,17 +570,26 @@ function render() {
     tEnd = Math.max(tEnd, f.ms != null ? f.time + f.ms / 1000 : Date.now() / 1000);
   }
   const span = Math.max(tEnd - t0, 0.001);
-  $("#rows").innerHTML = list.map((f) => {
-    const tags = (f.replay ? `<span class="tag">resent</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
-      + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "");
-    return `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}">
-      <td class="c-pick"><input type="checkbox" class="pick" ${picked.has(f.id) ? "checked" : ""} aria-label="Select request"></td>
-      <td class="c-star"><button type="button" class="star" aria-pressed="${f.marked}" aria-label="Bookmark">${f.marked ? "★" : "☆"}</button></td>
-      <td class="c-method">${esc(f.method)}</td><td class="c-status">${statusCell(f)}</td>
-      <td title="${esc(f.host)}">${esc(f.host)}</td><td title="${esc(f.url)}">${tags}${esc(pathOf(f))}</td>
-      <td class="muted">${esc(f.type)}</td><td class="num muted">${f.state === "done" ? fmtSize(f.size) : ""}</td>
-      <td class="num muted">${fmtMs(f.ms)}</td><td>${timelineCell(f, t0, span)}</td></tr>`;
-  }).join("");
+  const cells = {
+    pick: (f) => `<td class="c-pick"><input type="checkbox" class="pick" ${picked.has(f.id) ? "checked" : ""} aria-label="Select request"></td>`,
+    star: (f) => `<td class="c-star"><button type="button" class="star" aria-pressed="${f.marked}" aria-label="Bookmark">${f.marked ? "★" : "☆"}</button></td>`,
+    method: (f) => `<td class="c-method">${esc(f.method)}</td>`,
+    status: (f) => `<td class="c-status">${statusCell(f)}</td>`,
+    host: (f) => `<td title="${esc(f.host)}">${esc(f.host)}</td>`,
+    path: (f) => {
+      const tags = (f.replay ? `<span class="tag">resent</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
+        + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "");
+      return `<td title="${esc(f.url)}">${tags}${esc(pathOf(f))}</td>`;
+    },
+    type: (f) => `<td class="muted">${esc(f.type)}</td>`,
+    size: (f) => `<td class="num muted">${f.state === "done" ? fmtSize(f.size) : ""}</td>`,
+    ms: (f) => `<td class="num muted">${fmtMs(f.ms)}</td>`,
+    timeline: (f) => `<td>${timelineCell(f, t0, span)}</td>`,
+  };
+  const cols = shownCols();
+  $("#rows").innerHTML = list.map((f) =>
+    `<tr data-id="${f.id}" class="${f.id === selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}">${cols.map((c) => cells[c.key](f)).join("")}</tr>`
+  ).join("");
   if (atBottom) box.scrollTop = box.scrollHeight;
   if ($("#pick-all")) $("#pick-all").checked = list.length > 0 && list.every((f) => picked.has(f.id));
   $("#selection").hidden = picked.size === 0;
@@ -696,7 +734,7 @@ function renderStats() {
     <tbody>${[...hosts.values()].sort((a, b) => b.n - a.n).map((h) => `<tr data-host="${esc(h.host)}" title="Show only this host">
       <td>${esc(h.host)}</td><td class="num">${h.n}</td><td class="num ${h.err ? "err" : ""}">${h.err}</td>
       <td class="num">${fmtSize(h.bytes)}</td><td class="num">${h.timed ? fmtMs(Math.round(h.ms / h.timed)) : "–"}</td></tr>`).join("")}</tbody></table>`;
-  $("#stats-close").addEventListener("click", () => { statsOpen = false; $("#detail").innerHTML = `<div class="empty">Select a request.</div>`; });
+  $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;
     $("#host-pick").value = filter.host;
@@ -706,6 +744,14 @@ function renderStats() {
 $("#stats-btn").addEventListener("click", () => { statsOpen = true; selected = null; render(); });
 
 // --- detail ---
+function closeDetail() {
+  selected = null;
+  current = null;
+  statsOpen = false;
+  $("#detail").innerHTML = "";
+  render();
+}
+
 function select(id) {
   selected = id;
   statsOpen = false;
@@ -830,6 +876,7 @@ function renderDetail() {
         <button type="button" data-copy="ps">PowerShell</button>
         <button type="button" data-copy="py">Python requests</button>
       </div></details>
+      <button id="close-detail" type="button" aria-label="Close" title="Close (Esc)">×</button>
     </div>
     <div class="url">${esc(s.method)} ${esc(s.url)}</div>
     <textarea id="note" rows="1" placeholder="Note (saved with the session)…" aria-label="Note"></textarea>${body}`;
@@ -842,6 +889,7 @@ function renderDetail() {
   $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
   $("#resend-btn").addEventListener("click", openResend);
+  $("#close-detail").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll(".body-out").forEach(fillBody);
   $("#detail").querySelectorAll(".view-pick").forEach((sel) => sel.addEventListener("change", () => {
     bodyView = sel.value;
@@ -911,6 +959,10 @@ $("#rs-send").addEventListener("click", async () => {
 });
 
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && (selected != null || statsOpen) && !document.querySelector("dialog[open]")) {
+    closeDetail();
+    return;
+  }
   if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || selected == null || !["ArrowUp", "ArrowDown"].includes(e.key)) return;
   const list = visible(), i = list.findIndex((f) => f.id === selected);
   const next = list[i + (e.key === "ArrowDown" ? 1 : -1)];
