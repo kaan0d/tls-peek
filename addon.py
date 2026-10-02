@@ -28,6 +28,8 @@ HERE = Path(__file__).parent
 # settings.json and captures\ live next to tlspeek.exe when frozen, else next to this file.
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else HERE
 SETTINGS = APP_DIR / "settings.json"
+CONFDIR = APP_DIR / ".mitmproxy"
+CAPTURES = APP_DIR / "captures"
 MAX_FLOWS = 5000  # ponytail: oldest flows drop from the UI past this; the .mitm file keeps all
 MAX_BODY = 200_000
 MAX_WS_MESSAGES = 1000

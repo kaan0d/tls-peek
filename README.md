@@ -85,9 +85,13 @@ on real proxied calls: the caller waits, gets an edited request and a faked resp
 ```
 tlspeek.cmd        launcher
 bootstrap.ps1      installs Python and the Python packages if missing, runs tlspeek.py
-tlspeek.py         start page server, capture / open / cleanup, CA handling, tray icon, HAR on exit
+tlspeek.py         command line: capture / open / cleanup, CA handling, HAR on exit
+home.py            start page server
+win.py             flags, ports, UAC relaunch, console window, tray icon
 home.html          start page
-addon.py           mitmproxy addon: UI server, flow tracking, redaction, decoders, export
+addon.py           mitmproxy addon: UI server, flow tracking, intercept, decoders
+export.py          credential masking, HAR and Postman export
+web.py             request handler base for both local servers
 ui\                web UI: index.html, style.css, one ES module per panel (list, detail, intercept, stats, ...)
 test_tlspeek.py    redaction and UI API checks
 settings.json      program, host filter, UI port, auto-stop, capture retention

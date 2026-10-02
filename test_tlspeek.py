@@ -18,6 +18,7 @@ from mitmproxy.test import tflow, tutils
 import addon
 import export
 import tlspeek
+import win
 
 here = pathlib.Path(__file__).parent
 tmp = pathlib.Path(tempfile.mkdtemp())
@@ -91,7 +92,7 @@ class Echo(BaseHTTPRequestHandler):
 
 echo = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
 threading.Thread(target=echo.serve_forever, daemon=True).start()
-port = tlspeek.free_port()
+port = win.free_port()
 settings_before = (here / "settings.json").read_bytes()
 # Same entry point as tlspeek.py, so it works with a --user install where mitmdump.exe is not next to python.exe.
 mitmdump = [sys.executable, "-c", "from mitmproxy.tools.main import mitmdump; mitmdump()"]
@@ -164,7 +165,7 @@ print("ui ok")
 # --- Stop button and auto-stop ---
 def start(*extra):
     global port
-    port = tlspeek.free_port()
+    port = win.free_port()
     proc = subprocess.Popen(
         [*mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
          "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={port}", *extra])
@@ -240,7 +241,7 @@ with open(tmp / "views.mitm", "wb") as fo:
         w.add(fl)
 proc = subprocess.Popen(
     [*mitmdump, "-q", "-n", "-r", tmp / "views.mitm", "--set", "keepserving=true",
-     "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={(port := tlspeek.free_port())}"])
+     "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={(port := win.free_port())}"])
 try:
     for _ in range(50):
         try:
@@ -292,7 +293,7 @@ print("export ok")
 # --- tray: its polling must not keep an unattended capture alive ---
 proc = start("--set", "ui_auto_stop=4")
 tray_req = lambda: urllib.request.urlopen(urllib.request.Request(
-    f"http://127.0.0.1:{port}/api/state", headers=tlspeek.TRAY_HEADER), timeout=2).read()
+    f"http://127.0.0.1:{port}/api/state", headers=win.TRAY_HEADER), timeout=2).read()
 try:
     for _ in range(8):
         tray_req()
@@ -300,8 +301,8 @@ try:
 except OSError:
     pass  # stopped while the tray was still polling: what we want
 assert exits_within(proc, 5), "tray polling kept the capture alive"
-if tlspeek.tray_available():
-    assert tlspeek.tray_icon_image(True).size == (64, 64)
+if win.tray_available():
+    assert win.tray_icon_image(True).size == (64, 64)
 print("tray ok")
 
 # --- a capture stops when the window that started it goes away ---
@@ -317,16 +318,16 @@ print(f"parent ok (stopped {time.time() - t:.1f}s after the starter died)")
 
 # the starter's wait loop: exited() sees a process end
 short = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
-h = tlspeek.kernel32.OpenProcess(tlspeek.SYNCHRONIZE, False, short.pid)
-assert h and not tlspeek.exited(h)
-assert tlspeek.exited(h, 5000)
+h = win.kernel32.OpenProcess(win.SYNCHRONIZE, False, short.pid)
+assert h and not win.exited(h)
+assert win.exited(h, 5000)
 print("wait ok")
 
 # --- start page: list, open and close a saved session, delete, refuse paths outside captures\ ---
-tlspeek.CAPTURES.mkdir(exist_ok=True)
-fake = tlspeek.CAPTURES / f"session-test-{int(time.time())}.mitm"
+addon.CAPTURES.mkdir(exist_ok=True)
+fake = addon.CAPTURES / f"session-test-{int(time.time())}.mitm"
 fake.write_bytes((tmp / "c.mitm").read_bytes())
-port = tlspeek.free_port()
+port = win.free_port()
 home = subprocess.Popen([sys.executable, here / "tlspeek.py", "--no-browser", "--port", str(port)], stdout=subprocess.DEVNULL)
 try:
     for _ in range(50):
@@ -378,7 +379,7 @@ class Upper(BaseHTTPRequestHandler):
 
 upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upper)
 threading.Thread(target=upstream.serve_forever, daemon=True).start()
-proxy_port, port = tlspeek.free_port(), tlspeek.free_port()
+proxy_port, port = win.free_port(), win.free_port()
 proxy = subprocess.Popen([*mitmdump, "-q", "--mode", f"regular@{proxy_port}", "--set", f"confdir={tmp / 'conf'}",
                           "-s", here / "addon.py", "--set", f"ui_port={port}"])
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": f"http://127.0.0.1:{proxy_port}"}))
