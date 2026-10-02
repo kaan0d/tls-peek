@@ -16,6 +16,7 @@ from mitmproxy import io
 from mitmproxy.test import tflow, tutils
 
 import addon
+import export
 import tlspeek
 
 here = pathlib.Path(__file__).parent
@@ -23,9 +24,9 @@ tmp = pathlib.Path(tempfile.mkdtemp())
 
 # --- field-name matching ---
 for name in ("Authorization", "X-Api-Key", "accessToken", "PASSWORD", "user_name", "sessionId", "Set-Cookie"):
-    assert addon.is_secret(name), name
+    assert export.is_secret(name), name
 for name in ("User-Agent", "monkey", "design", "keyword", "Content-Type", "page"):
-    assert not addon.is_secret(name), name
+    assert not export.is_secret(name), name
 
 # --- redacted HAR export ---
 f = tflow.tflow(
