@@ -500,30 +500,9 @@ class Home:
 
 
 def make_home_handler(home):
-    from http.server import BaseHTTPRequestHandler
+    from web import LocalHandler
 
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *args):
-            pass
-
-        def send(self, code, body, ctype="application/json", headers=()):
-            if not isinstance(body, bytes):
-                body = json.dumps(body).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            for k, v in headers:
-                self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(body)
-
-        def allowed(self):
-            # Same guard as the capture UI: only requests addressed to our own origin (DNS rebinding).
-            ok = self.headers.get("Host") in (f"127.0.0.1:{home.port}", f"localhost:{home.port}")
-            if not ok:
-                self.send(403, {"error": "bad host"})
-            return ok
-
+    class Handler(LocalHandler):
         def do_GET(self):
             if not self.allowed():
                 return
@@ -547,10 +526,8 @@ def make_home_handler(home):
         def do_POST(self):
             if not self.allowed():
                 return
-            if self.headers.get("Content-Type") != "application/json":  # forces a CORS preflight
-                return self.send(400, {"error": "bad request"})
             try:
-                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                body = self.json_body()
                 if self.path == "/api/bye":
                     home.seen(bye=True)
                     return self.send(200, {})

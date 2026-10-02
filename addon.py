@@ -14,7 +14,7 @@ import re
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse
 
@@ -22,6 +22,8 @@ from mitmproxy import contentviews, ctx, http
 from OpenSSL import SSL
 from mitmproxy.addons.savehar import SaveHar
 from mitmproxy.utils import strutils
+
+from web import LocalHandler
 
 HERE = Path(__file__).parent
 # settings.json and captures\ live next to tlspeek.exe when frozen, else next to this file.
@@ -509,29 +511,7 @@ class TlsPeek:
 def make_handler(addon):
     import mitmproxy_rs.process_info as pinfo
 
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *args):
-            pass
-
-        def send(self, code, body, ctype="application/json", headers=()):
-            if not isinstance(body, bytes):
-                body = json.dumps(body).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            for k, v in headers:
-                self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(body)
-
-        def allowed(self):
-            # Blocks DNS rebinding: only accept requests addressed to our own origin.
-            port = self.server.server_address[1]
-            ok = self.headers.get("Host") in (f"127.0.0.1:{port}", f"localhost:{port}")
-            if not ok:
-                self.send(403, {"error": "bad host"})
-            return ok
-
+    class Handler(LocalHandler):
         def do_GET(self):
             if not self.allowed():
                 return
@@ -541,9 +521,8 @@ def make_handler(addon):
             q = parse_qs(url.query)
             if url.path == "/":
                 self.send(200, (HERE / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
-            elif re.fullmatch(r"/ui/[\w-]+\.(js|css)", url.path) and (HERE / url.path[1:]).is_file():
-                ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
-                self.send(200, (HERE / url.path[1:]).read_bytes(), ctype + "; charset=utf-8")
+            elif self.send_static(url.path):
+                pass
             elif url.path == "/api/state":
                 self.send(200, addon.state())
             elif url.path == "/api/flows":
@@ -586,11 +565,8 @@ def make_handler(addon):
         def do_POST(self):
             if not self.allowed():
                 return
-            # JSON content type forces a CORS preflight, so other sites cannot post here.
-            if self.headers.get("Content-Type") != "application/json":
-                return self.send(400, {"error": "bad request"})
             try:
-                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                body = self.json_body()
                 if self.path == "/api/config":
                     if ctx.options.ui_file:
                         raise ValueError("viewing a saved session")
