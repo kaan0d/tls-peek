@@ -92,9 +92,10 @@ echo = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
 threading.Thread(target=echo.serve_forever, daemon=True).start()
 port = tlspeek.free_port()
 settings_before = (here / "settings.json").read_bytes()
-mitmdump = pathlib.Path(sys.executable).with_name("mitmdump")
+# Same entry point as tlspeek.py, so it works with a --user install where mitmdump.exe is not next to python.exe.
+mitmdump = [sys.executable, "-c", "from mitmproxy.tools.main import mitmdump; mitmdump()"]
 srv = subprocess.Popen(
-    [mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
+    [*mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
      "--set", f"confdir={tmp / 'conf'}", "--mode", f"local:{addon.NO_PROGRAM}",
      "-s", here / "addon.py", "--set", f"ui_port={port}", "--save-stream-file", tmp / "saved.mitm"],
 )
@@ -164,7 +165,7 @@ def start(*extra):
     global port
     port = tlspeek.free_port()
     proc = subprocess.Popen(
-        [mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
+        [*mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
          "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={port}", *extra])
     for _ in range(50):
         try:
@@ -237,7 +238,7 @@ with open(tmp / "views.mitm", "wb") as fo:
     for fl in (html_flow, proto_flow, img_flow):
         w.add(fl)
 proc = subprocess.Popen(
-    [mitmdump, "-q", "-n", "-r", tmp / "views.mitm", "--set", "keepserving=true",
+    [*mitmdump, "-q", "-n", "-r", tmp / "views.mitm", "--set", "keepserving=true",
      "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={(port := tlspeek.free_port())}"])
 try:
     for _ in range(50):
@@ -371,7 +372,7 @@ class Upper(BaseHTTPRequestHandler):
 upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upper)
 threading.Thread(target=upstream.serve_forever, daemon=True).start()
 proxy_port, port = tlspeek.free_port(), tlspeek.free_port()
-proxy = subprocess.Popen([mitmdump, "-q", "--mode", f"regular@{proxy_port}", "--set", f"confdir={tmp / 'conf'}",
+proxy = subprocess.Popen([*mitmdump, "-q", "--mode", f"regular@{proxy_port}", "--set", f"confdir={tmp / 'conf'}",
                           "-s", here / "addon.py", "--set", f"ui_port={port}"])
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": f"http://127.0.0.1:{proxy_port}"}))
 results = {}
