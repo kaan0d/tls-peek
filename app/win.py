@@ -139,6 +139,7 @@ def owns_console():
 
 
 def tray_icon_image(paused):
+    """ui/icon.svg is the same drawing (unpaused) for the browser tab; change both together."""
     from PIL import Image, ImageDraw
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)

@@ -257,8 +257,8 @@ try:
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/body/2?part=response") as r:
         assert r.headers["Content-Type"] == "image/png" and r.read() == png
     # The UI page and every module it is split into are served with the type a browser needs.
-    for name, ctype in [("", "text/html"), *((f"ui/{f.name}", "text/javascript" if f.suffix == ".js" else "text/css")
-                                            for f in (root / "ui").glob("*.*") if f.suffix in (".js", ".css"))]:
+    types = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}
+    for name, ctype in [("", "text/html"), *((f"ui/{f.name}", types[f.suffix]) for f in (root / "ui").glob("*.*") if f.suffix in types)]:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}") as r:
             assert r.headers["Content-Type"].startswith(ctype) and r.read() == (root / (name or "ui/index.html")).read_bytes(), name
     assert call("/ui/..%5Caddon.py")[0] == 404 and call("/ui/index.html")[0] == 404

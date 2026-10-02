@@ -39,10 +39,10 @@ class LocalHandler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
 
     def send_static(self, path):
-        """Serves /ui/NAME.js or /ui/NAME.css. False when path is not one of those files."""
-        m = re.fullmatch(r"/ui/([\w-]+\.(js|css))", path)
+        """Serves /ui/NAME.js, .css or .svg. False when path is not one of those files."""
+        m = re.fullmatch(r"/ui/([\w-]+\.(js|css|svg))", path)
         if not m or not (UI_DIR / m[1]).is_file():
             return False
-        ctype = "text/javascript" if m[2] == "js" else "text/css"
+        ctype = {"js": "text/javascript", "css": "text/css", "svg": "image/svg+xml"}[m[2]]
         self.send(200, (UI_DIR / m[1]).read_bytes(), ctype + "; charset=utf-8")
         return True
