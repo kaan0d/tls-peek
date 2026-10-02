@@ -1,10 +1,12 @@
 """Request handler base for tls-peek's two local servers: the start page and the capture UI."""
 import json
 import re
+import sys
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-UI_DIR = Path(__file__).parent / "ui"
+# ui\ sits next to app\ in the source tree, and next to the modules inside the frozen exe.
+UI_DIR = (Path(__file__).parent if getattr(sys, "frozen", False) else Path(__file__).parent.parent) / "ui"
 
 
 class LocalHandler(BaseHTTPRequestHandler):

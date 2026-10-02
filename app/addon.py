@@ -22,11 +22,11 @@ from mitmproxy import contentviews, ctx, http
 from OpenSSL import SSL
 
 from export import body_text, make_har, make_postman, redact
-from web import LocalHandler
+from web import UI_DIR, LocalHandler
 
 HERE = Path(__file__).parent
-# settings.json and captures\ live next to tlspeek.exe when frozen, else next to this file.
-APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else HERE
+# settings.json and captures\ live next to tlspeek.exe when frozen, else in the folder above app\.
+APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else HERE.parent
 SETTINGS = APP_DIR / "settings.json"
 CONFDIR = APP_DIR / ".mitmproxy"
 CAPTURES = APP_DIR / "captures"
@@ -416,7 +416,7 @@ def make_handler(addon):
             url = urlparse(self.path)
             q = parse_qs(url.query)
             if url.path == "/":
-                self.send(200, (HERE / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
+                self.send(200, (UI_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif self.send_static(url.path):
                 pass
             elif url.path == "/api/state":

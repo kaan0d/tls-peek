@@ -1,6 +1,6 @@
 """Checks redaction, HAR export and the UI server API.
 
-Run: python test_tlspeek.py   (needs mitmproxy installed)
+Run: python app/test_tlspeek.py   (needs mitmproxy installed)
 """
 import json
 import pathlib
@@ -21,6 +21,7 @@ import tlspeek
 import win
 
 here = pathlib.Path(__file__).parent
+root = here.parent  # settings.json and the ui folder
 tmp = pathlib.Path(tempfile.mkdtemp())
 
 # --- field-name matching ---
@@ -93,7 +94,7 @@ class Echo(BaseHTTPRequestHandler):
 echo = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
 threading.Thread(target=echo.serve_forever, daemon=True).start()
 port = win.free_port()
-settings_before = (here / "settings.json").read_bytes()
+settings_before = (root / "settings.json").read_bytes()
 # Same entry point as tlspeek.py, so it works with a --user install where mitmdump.exe is not next to python.exe.
 mitmdump = [sys.executable, "-c", "from mitmproxy.tools.main import mitmdump; mitmdump()"]
 srv = subprocess.Popen(
@@ -139,7 +140,7 @@ try:
 
     status, state = post("/api/config", {"program": r"C:\x\Some App.exe", "host_filter": "api.example.com"})
     assert status == 200 and state["program"] == "Some App.exe", state
-    assert json.loads((here / "settings.json").read_text("utf-8"))["program"] == "Some App.exe"
+    assert json.loads((root / "settings.json").read_text("utf-8"))["program"] == "Some App.exe"
 
     status, state = post("/api/pause", {"paused": True})
     assert status == 200 and state["paused"], state
@@ -159,7 +160,7 @@ try:
 finally:
     srv.kill()
     echo.shutdown()
-    (here / "settings.json").write_bytes(settings_before)
+    (root / "settings.json").write_bytes(settings_before)
 print("ui ok")
 
 # --- Stop button and auto-stop ---
@@ -257,9 +258,9 @@ try:
         assert r.headers["Content-Type"] == "image/png" and r.read() == png
     # The UI page and every module it is split into are served with the type a browser needs.
     for name, ctype in [("", "text/html"), *((f"ui/{f.name}", "text/javascript" if f.suffix == ".js" else "text/css")
-                                            for f in (here / "ui").glob("*.*") if f.suffix in (".js", ".css"))]:
+                                            for f in (root / "ui").glob("*.*") if f.suffix in (".js", ".css"))]:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}") as r:
-            assert r.headers["Content-Type"].startswith(ctype) and r.read() == (here / (name or "ui/index.html")).read_bytes(), name
+            assert r.headers["Content-Type"].startswith(ctype) and r.read() == (root / (name or "ui/index.html")).read_bytes(), name
     assert call("/ui/..%5Caddon.py")[0] == 404 and call("/ui/index.html")[0] == 404
     status, view = call("/api/view/1?part=response&view=protobuf")
     assert status == 200 and "150" in view["text"] and "abc" in view["text"], view
@@ -338,7 +339,7 @@ try:
             time.sleep(0.2)
     assert any(x["name"] == fake.name for x in st["sessions"]) and st["child"] is None, st
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/base.css") as r:  # the start page shares the UI colours
-        assert r.headers["Content-Type"].startswith("text/css") and r.read() == (here / "ui/base.css").read_bytes()
+        assert r.headers["Content-Type"].startswith("text/css") and r.read() == (root / "ui/base.css").read_bytes()
     assert post("/api/open", {"name": "../settings.json"})[0] == 400
     assert post("/api/delete", {"name": "..\tlspeek.py"})[0] == 400
     status, st = post("/api/open", {"name": fake.name})

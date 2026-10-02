@@ -30,7 +30,7 @@ python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on f
 Or build a single `tlspeek.exe` that needs neither:
 ```
 pip install mitmproxy pystray pillow pyinstaller
-pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "home.html;." --add-data "addon.py;." tlspeek.py
+pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
 ```
 The exe lands in `dist\`. Put `settings.json` next to it (optional).
 
@@ -52,7 +52,7 @@ tlspeek.cmd  /  tlspeek.exe          start page
 tlspeek.exe capture                  start a capture right away
 tlspeek.exe open [FILE.mitm]         view a saved session (or drop the file on the exe)
 tlspeek.exe cleanup                  untrust and delete the CA after a crash
-python tlspeek.py ...                same commands without the exe
+python app\tlspeek.py ...            same commands without the exe
 ```
 
 `settings.json`: `program`, `host_filter` (plain domain; a value with `\` is a regex),
@@ -61,7 +61,7 @@ python tlspeek.py ...                same commands without the exe
 
 ## Verification
 ```
-python test_tlspeek.py
+python app\test_tlspeek.py
 ```
 Covers field-name matching and redacted HAR export, then runs the UI server and checks
 change tracking, pending state, body search, the Host guard, live program switching,
@@ -83,16 +83,19 @@ on real proxied calls: the caller waits, gets an edited request and a faked resp
 
 ## Layout
 ```
-tlspeek.cmd        launcher
-bootstrap.ps1      installs Python and the Python packages if missing, runs tlspeek.py
-tlspeek.py         command line: capture / open / cleanup, CA handling, HAR on exit
-home.py            start page server
-win.py             flags, ports, UAC relaunch, console window, tray icon
-home.html          start page
-addon.py           mitmproxy addon: UI server, flow tracking, intercept, decoders
-export.py          credential masking, HAR and Postman export
-web.py             request handler base for both local servers
-ui\                web UI: index.html, style.css, one ES module per panel (list, detail, intercept, stats, ...)
-test_tlspeek.py    redaction and UI API checks
-settings.json      program, host filter, UI port, auto-stop, capture retention
+tlspeek.cmd            launcher
+settings.json          program, host filter, UI port, auto-stop, capture retention
+app\
+  bootstrap.ps1        installs Python and the Python packages if missing, runs tlspeek.py
+  tlspeek.py           command line: capture / open / cleanup, CA handling, HAR on exit
+  home.py              start page server
+  win.py               flags, ports, UAC relaunch, console window, tray icon
+  addon.py             mitmproxy addon: UI server, flow tracking, intercept, decoders
+  export.py            credential masking, HAR and Postman export
+  web.py               request handler base for both local servers
+  test_tlspeek.py      redaction and UI API checks
+ui\
+  home.html            start page
+  index.html           capture UI, with style.css and one ES module per panel
+  base.css             colours shared by both pages
 ```

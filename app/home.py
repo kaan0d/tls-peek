@@ -10,7 +10,7 @@ from http.server import ThreadingHTTPServer
 
 import addon
 from addon import CAPTURES, CONFDIR
-from web import LocalHandler
+from web import UI_DIR, LocalHandler
 from win import (NO_BROWSER, ca_trusted, exited, fail, flag, free_port, is_up, owns_console, port_free,
                  relaunch_as_admin, self_command, show_console, start_tray, tray_available)
 
@@ -144,7 +144,7 @@ def make_home_handler(home):
             home.seen()
             path, _, query = self.path.partition("?")
             if path == "/":
-                self.send(200, (addon.HERE / "home.html").read_bytes(), "text/html; charset=utf-8")
+                self.send(200, (UI_DIR / "home.html").read_bytes(), "text/html; charset=utf-8")
             elif self.send_static(path):
                 pass
             elif path == "/api/home":
