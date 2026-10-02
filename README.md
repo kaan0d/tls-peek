@@ -30,7 +30,7 @@ python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on f
 Or build a single `tlspeek.exe` that needs neither:
 ```
 pip install mitmproxy pystray pillow pyinstaller
-pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui.html;." --add-data "home.html;." --add-data "addon.py;." tlspeek.py
+pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "home.html;." --add-data "addon.py;." tlspeek.py
 ```
 The exe lands in `dist\`. Put `settings.json` next to it (optional).
 
@@ -88,7 +88,7 @@ bootstrap.ps1      installs Python and the Python packages if missing, runs tlsp
 tlspeek.py         start page server, capture / open / cleanup, CA handling, tray icon, HAR on exit
 home.html          start page
 addon.py           mitmproxy addon: UI server, flow tracking, redaction, decoders, export
-ui.html            web UI
+ui\                web UI: index.html, style.css, one ES module per panel (list, detail, intercept, stats, ...)
 test_tlspeek.py    redaction and UI API checks
 settings.json      program, host filter, UI port, auto-stop, capture retention
 ```

@@ -1,6 +1,6 @@
 """mitmproxy addon for tls-peek.
 
-Serves the web UI (ui.html) on 127.0.0.1 when ui_port > 0: pick the program,
+Serves the web UI (ui folder) on 127.0.0.1 when ui_port > 0: pick the program,
 set the host filter, inspect, search, filter and resend traffic. Warns when the
 monitored program rejects the mitmproxy certificate (pinning).
 
@@ -540,7 +540,10 @@ def make_handler(addon):
             url = urlparse(self.path)
             q = parse_qs(url.query)
             if url.path == "/":
-                self.send(200, (HERE / "ui.html").read_bytes(), "text/html; charset=utf-8")
+                self.send(200, (HERE / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif re.fullmatch(r"/ui/[\w-]+\.(js|css)", url.path) and (HERE / url.path[1:]).is_file():
+                ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
+                self.send(200, (HERE / url.path[1:]).read_bytes(), ctype + "; charset=utf-8")
             elif url.path == "/api/state":
                 self.send(200, addon.state())
             elif url.path == "/api/flows":

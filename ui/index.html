@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tls-peek</title>
+<link rel="stylesheet" href="ui/style.css">
+<script type="module" src="ui/main.js"></script>
+</head>
+<body>
+<header>
+  <h1>tls-peek</h1>
+  <div class="field live-only">
+    <label for="program-btn">Program</label>
+    <button id="program-btn" type="button"><span>Pick program…</span></button>
+  </div>
+  <div class="field live-only">
+    <label for="host">Host filter</label>
+    <input id="host" placeholder="api.example.com (empty = all)" autocomplete="off">
+    <button id="apply" class="primary" type="button">Apply</button>
+  </div>
+  <div class="field file-only" hidden><label>Viewing</label><span id="file"></span></div>
+  <button id="pause" class="live-only" type="button" aria-pressed="false" title="Let new connections through untouched and stop recording">Pause</button>
+  <button id="icpt-btn" class="live-only" type="button" aria-pressed="false" title="Hold matching requests or responses so you can edit them before the program gets them; click again to turn off">Intercept</button>
+  <button id="held-btn" type="button" hidden title="Show the first held request"></button>
+  <button id="release-all" type="button" hidden>Continue all</button>
+  <span id="status" class="status">Connecting…</span>
+  <span class="spacer"></span>
+  <button id="stats-btn" type="button" title="Counts, sizes and timings for the requests shown">Stats</button>
+  <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
+  <button id="export" type="button" title="Download requests as HAR or a Postman collection">Export…</button>
+  <button id="stop" type="button" title="Stop capturing, save the HAR and remove the certificate">Stop</button>
+</header>
+<div id="stopped" hidden><div role="alertdialog" aria-labelledby="stopped-title">
+  <h2 id="stopped-title">Stopped</h2>
+  <p id="stopped-text">The redacted HAR and the session file are in the <code>captures</code> folder, and the certificate is removed. You can close this tab.</p>
+</div></div>
+<div id="filters">
+  <input id="search" type="search" placeholder="Search URL, method, status…" aria-label="Search requests">
+  <label class="check"><input id="in-bodies" type="checkbox"> in bodies</label>
+  <div class="chips" id="status-chips" role="group" aria-label="Status filter"></div>
+  <div class="chips" id="type-chips" role="group" aria-label="Type filter"></div>
+  <select id="host-pick" aria-label="Host"><option value="">All hosts</option></select>
+  <div class="chips"><button id="marked-only" type="button" aria-pressed="false" title="Only bookmarked requests">★ Bookmarked</button></div>
+  <div id="selection" hidden>
+    <span id="sel-count"></span>
+    <button id="compare-btn" type="button" title="Select exactly two requests">Compare</button>
+    <button id="sel-clear" type="button">Clear selection</button>
+  </div>
+</div>
+<div id="events" role="status" hidden>
+  <span class="text">⚠ <b id="ev-count"></b> did not accept the capture certificate, so their traffic is not decrypted.
+    <small>Pinned, or the app was running before the capture started: restart it.</small></span>
+  <button id="ev-toggle" type="button" aria-expanded="false">Show</button>
+  <button id="ev-close" type="button" aria-label="Dismiss" title="Dismiss until a new host fails">×</button>
+  <ul id="ev-list" hidden></ul>
+</div>
+<main>
+  <section id="list" aria-label="Requests">
+    <table>
+      <colgroup id="cols"></colgroup>
+      <thead><tr id="head"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty">No requests yet.<br>Pick a program, then close and reopen it and do the action.</div>
+  </section>
+  <section id="detail" aria-label="Request detail"></section>
+</main>
+
+<dialog id="picker" aria-label="Pick program">
+  <div class="top">
+    <input id="proc-search" type="search" placeholder="Filter, or type an .exe name and press Enter" aria-label="Filter programs">
+    <label class="check"><input id="proc-all" type="checkbox"> Background</label>
+    <button id="proc-close" type="button">Cancel</button>
+  </div>
+  <div id="procs"></div>
+</dialog>
+
+<dialog id="icpt-dlg" aria-label="Intercept">
+  <form method="dialog">
+    <label><input type="checkbox" id="ic-on"> <b>Hold matching traffic</b></label>
+    <p>The program waits while something is held, so release it quickly: some programs give up after a timeout.</p>
+    <div class="field-col"><span>URL contains (empty = everything)</span><input id="ic-url" placeholder="api.example.com/login" autocomplete="off"></div>
+    <div class="field-col"><span>Method</span>
+      <select id="ic-method"><option value="">Any</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
+    <label><input type="checkbox" id="ic-req" checked> Hold requests (before they reach the server)</label>
+    <label><input type="checkbox" id="ic-resp"> Hold responses (before the program gets them)</label>
+    <div class="actions"><button type="button" id="ic-cancel">Cancel</button><button type="button" id="ic-save" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="icpt-off" aria-labelledby="io-title">
+  <form method="dialog" class="ex">
+    <b id="io-title">Turn off intercept?</b>
+    <p id="io-text"></p>
+    <div class="actions">
+      <button type="button" id="io-rule" style="margin-right: auto">Change rule…</button>
+      <button type="button" id="io-cancel">Cancel</button>
+      <button type="button" id="io-off" class="primary">Turn off</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="export-dlg" aria-label="Export">
+  <form method="dialog" class="ex">
+    <fieldset><legend>Format</legend>
+      <label><input type="radio" name="ex-format" value="har" checked> HAR <small>(browser dev tools, most HTTP tools)</small></label>
+      <label><input type="radio" name="ex-format" value="postman"> Postman collection <small>(one folder per host)</small></label>
+    </fieldset>
+    <fieldset><legend>Requests</legend>
+      <label><input type="radio" name="ex-scope" value="all"> All <small></small></label>
+      <label><input type="radio" name="ex-scope" value="shown"> Shown by the filters <small></small></label>
+      <label><input type="radio" name="ex-scope" value="selected"> Selected <small></small></label>
+    </fieldset>
+    <label><input type="checkbox" id="ex-mask" checked> Mask credentials (tokens, cookies, passwords…)</label>
+    <div class="actions"><span id="ex-error"></span>
+      <button type="button" id="ex-cancel">Cancel</button><button type="button" id="ex-go" class="primary">Download</button></div>
+  </form>
+</dialog>
+
+<dialog id="compare" aria-label="Compare two requests">
+  <div class="top"><b style="flex: 1">Compare</b><button id="compare-close" type="button">Close</button></div>
+  <div id="compare-body"></div>
+</dialog>
+
+<dialog id="resend" aria-label="Edit and resend">
+  <form method="dialog">
+    <div class="row">
+      <input id="rs-method" aria-label="Method" style="flex: 0 0 90px">
+      <input id="rs-url" aria-label="URL">
+    </div>
+    <label for="rs-headers">Headers (one "Name: value" per line)</label>
+    <textarea id="rs-headers" rows="8"></textarea>
+    <label for="rs-body">Body</label>
+    <textarea id="rs-body" rows="8"></textarea>
+    <div class="actions">
+      <span id="resend-error"></span>
+      <button type="button" id="rs-cancel">Cancel</button>
+      <button type="button" id="rs-send" class="primary">Resend</button>
+    </div>
+  </form>
+</dialog>
+
+</body>
+</html>

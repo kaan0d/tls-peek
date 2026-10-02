@@ -253,6 +253,12 @@ try:
         assert r.read() == b"<script>x()</script>hi"
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/body/2?part=response") as r:
         assert r.headers["Content-Type"] == "image/png" and r.read() == png
+    # The UI page and every module it is split into are served with the type a browser needs.
+    for name, ctype in [("", "text/html"), *((f"ui/{f.name}", "text/javascript" if f.suffix == ".js" else "text/css")
+                                            for f in (here / "ui").glob("*.*") if f.suffix in (".js", ".css"))]:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}") as r:
+            assert r.headers["Content-Type"].startswith(ctype) and r.read() == (here / (name or "ui/index.html")).read_bytes(), name
+    assert call("/ui/..%5Caddon.py")[0] == 404 and call("/ui/index.html")[0] == 404
     status, view = call("/api/view/1?part=response&view=protobuf")
     assert status == 200 and "150" in view["text"] and "abc" in view["text"], view
     status, view = call("/api/view/1?part=response&view=hex%20dump")
