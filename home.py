@@ -145,6 +145,8 @@ def make_home_handler(home):
             path, _, query = self.path.partition("?")
             if path == "/":
                 self.send(200, (addon.HERE / "home.html").read_bytes(), "text/html; charset=utf-8")
+            elif self.send_static(path):
+                pass
             elif path == "/api/home":
                 self.send(200, home.status())
             elif path == "/api/file":

@@ -1,23 +1,8 @@
-:root {
-  --bg: #f6f7f9; --panel: #fff; --line: #e3e6ea; --text: #1d2228; --muted: #6b7480;
-  --accent: #2f6fdf; --ok: #1f8a4c; --warn: #b7791f; --bad: #c43d3d; --sel: #e8f0fd;
-  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15181c; --panel: #1c2026; --line: #2c323a; --text: #e3e7ec; --muted: #8b95a1;
-    --accent: #6c9ef5; --ok: #4cc283; --warn: #e0a84a; --bad: #ef6b6b; --sel: #24324a;
-  }
-}
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
+body { font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
   display: flex; flex-direction: column; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 input, select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-width: 0; }
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }

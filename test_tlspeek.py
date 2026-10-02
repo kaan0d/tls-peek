@@ -337,6 +337,8 @@ try:
         except OSError:
             time.sleep(0.2)
     assert any(x["name"] == fake.name for x in st["sessions"]) and st["child"] is None, st
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/base.css") as r:  # the start page shares the UI colours
+        assert r.headers["Content-Type"].startswith("text/css") and r.read() == (here / "ui/base.css").read_bytes()
     assert post("/api/open", {"name": "../settings.json"})[0] == 400
     assert post("/api/delete", {"name": "..\tlspeek.py"})[0] == 400
     status, st = post("/api/open", {"name": fake.name})

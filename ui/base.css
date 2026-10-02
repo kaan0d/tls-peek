@@ -1,0 +1,17 @@
+/* Colours and resets shared by the start page and the capture UI. */
+:root {
+  --bg: #f6f7f9; --panel: #fff; --line: #e3e6ea; --text: #1d2228; --muted: #6b7480;
+  --accent: #2f6fdf; --ok: #1f8a4c; --warn: #b7791f; --bad: #c43d3d; --sel: #e8f0fd;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c; --panel: #1c2026; --line: #2c323a; --text: #e3e7ec; --muted: #8b95a1;
+    --accent: #6c9ef5; --ok: #4cc283; --warn: #e0a84a; --bad: #ef6b6b; --sel: #24324a;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
