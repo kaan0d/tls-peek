@@ -68,6 +68,7 @@ class TlsPeek:
         self.loop = None
         self.program = ""
         self.host_text = ""
+        self.last_program = ""  # from settings.json; the UI offers it, nothing is captured until a pick
         self.last_seen = None  # last UI request; None until a tab has connected
         self.bye_at = None     # when a tab last said it is closing
         self.watcher = None
@@ -87,7 +88,8 @@ class TlsPeek:
         if ctx.options.ui_port and not self.server:
             if not ctx.options.ui_file and ctx.options.mode[0].startswith("local"):
                 settings = read_settings()
-                self.apply(settings.get("program", ""), settings.get("host_filter", ""))
+                self.last_program = settings.get("program", "")
+                self.apply("", settings.get("host_filter", ""))
             self.server = ThreadingHTTPServer(("127.0.0.1", ctx.options.ui_port), make_handler(self))
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
             if ctx.options.ui_auto_stop:
@@ -299,6 +301,7 @@ class TlsPeek:
     def state(self):
         return {
             "program": self.program,
+            "last_program": self.last_program,
             "host_filter": self.host_text,
             "file": Path(ctx.options.ui_file).name if ctx.options.ui_file else "",
             "paused": self.paused,
@@ -312,7 +315,9 @@ class TlsPeek:
         """Also saves the choice to settings.json."""
         self.on_loop(lambda: self.apply(program, host_filter))
         settings = read_settings()
-        settings.update(program=self.program, host_filter=self.host_text)
+        if self.program:
+            self.last_program = self.program
+        settings.update(program=self.last_program, host_filter=self.host_text)
         SETTINGS.write_text(json.dumps(settings, indent=2), "utf-8")
 
     def changes(self, since):

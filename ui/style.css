@@ -176,6 +176,11 @@ dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--p
 dialog::backdrop { background: rgb(0 0 0 / .35); }
 dialog .top { padding: 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
 dialog .top input[type=search] { flex: 1; }
+.pick-head { padding: 14px 12px 0; display: grid; gap: 6px; }
+.pick-head p { margin: 0; color: var(--muted); font-size: 12px; }
+#proc-last { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--accent);
+  border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+#proc-last-name { font-family: var(--mono); flex: 1; overflow: hidden; text-overflow: ellipsis; }
 #procs { max-height: 60vh; overflow: auto; }
 #procs button { display: flex; gap: 10px; align-items: center; width: 100%; border: 0; border-radius: 0;
   border-bottom: 1px solid var(--line); padding: 8px 12px; text-align: left; }

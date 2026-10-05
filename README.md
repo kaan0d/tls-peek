@@ -38,7 +38,7 @@ The exe lands in `dist\`.
 Double-click `tlspeek.cmd` (or `tlspeek.exe`). The start page opens in your browser.
 
 1. Click **Start capture** and accept the UAC prompt. A tray icon appears.
-2. Click **Program** and pick the app (tick **Background** for tray apps).
+2. The UI asks which program to capture: pick it from the list (tick **Background** for tray apps) or press **Use again** for the last one. **Program** switches later.
 3. Optionally set a host filter such as `api.example.com` and press **Apply**.
 4. Close and reopen the monitored program, then do the action. WinDivert only sees new connections.
 5. Press **Stop** (UI or tray). The redacted HAR lands in `captures\`, the CA is removed and the tab returns to the start page.

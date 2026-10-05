@@ -13,9 +13,13 @@ let dismissedAt = 0;  // number of failed hosts when the warning was dismissed
 let homeUrl = "";     // start page to return to (empty when started from the command line)
 let fileMode = false;
 let stopped = false;
+let lastProgram = "";
+let asked = false;    // the picker opens by itself once, when a capture starts without a program
 
 export function showState(s) {
   program = s.program;
+  lastProgram = s.last_program || "";
+  if (!asked && !s.file && !s.program) { asked = true; openPicker(); }
   homeUrl = s.home || "";
   if (fileMode !== !!s.file) {
     fileMode = !!s.file;
@@ -122,12 +126,18 @@ async function loadProcs() {
   procs = await api("/api/processes" + ($("#proc-all").checked ? "?all=1" : ""));
   renderProcs();
 }
-$("#program-btn").addEventListener("click", async () => {
+async function openPicker() {
+  asked = true;
+  if ($("#picker").open) return;
   $("#proc-search").value = "";
+  $("#proc-last").hidden = !lastProgram;
+  $("#proc-last-name").textContent = lastProgram;
   $("#procs").innerHTML = `<div class="empty">Loading…</div>`;
   $("#picker").showModal();
   await loadProcs();
-});
+}
+$("#program-btn").addEventListener("click", openPicker);
+$("#proc-last-use").addEventListener("click", () => { $("#picker").close(); applyConfig(lastProgram); });
 $("#proc-all").addEventListener("change", loadProcs);
 $("#proc-search").addEventListener("input", renderProcs);
 $("#proc-search").addEventListener("keydown", (e) => {

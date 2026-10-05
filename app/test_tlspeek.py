@@ -105,6 +105,7 @@ class Echo(BaseHTTPRequestHandler):
         pass
 
 
+settings_file.write_text(json.dumps({"program": "Prev.exe"}), "utf-8")
 echo = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
 threading.Thread(target=echo.serve_forever, daemon=True).start()
 port = win.free_port()
@@ -145,6 +146,8 @@ try:
     done, slow = ch["flows"]
     assert done["state"] == "done" and done["status"] == 200 and slow["state"] == "pending", ch
     assert call(f"/api/flows?since={ch['seq']}")[1]["flows"] == []
+    state = call("/api/state")[1]
+    assert state["program"] == "" and state["last_program"] == "Prev.exe", "a capture must wait for a program pick"
     status, detail = call(f"/api/flow/{done['id']}")
     assert "HTOKEN" in json.dumps(detail["request"]), "live view must show unredacted data"
     assert call("/api/search?q=alice")[1] == [done["id"]]

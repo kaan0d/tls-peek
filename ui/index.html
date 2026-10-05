@@ -69,7 +69,12 @@
   <section id="detail" aria-label="Request detail"></section>
 </main>
 
-<dialog id="picker" aria-label="Pick program">
+<dialog id="picker" aria-labelledby="picker-title">
+  <div class="pick-head">
+    <b id="picker-title">Which program should be captured?</b>
+    <p>Only this program's traffic is intercepted. You can switch at any time with the Program button.</p>
+    <div id="proc-last" hidden>Last time: <b id="proc-last-name"></b> <button id="proc-last-use" type="button" class="primary">Use again</button></div>
+  </div>
   <div class="top">
     <input id="proc-search" type="search" placeholder="Filter, or type an .exe name and press Enter" aria-label="Filter programs">
     <label class="check"><input id="proc-all" type="checkbox"> Background</label>
