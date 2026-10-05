@@ -48,6 +48,47 @@ def read_settings():
     return json.loads(SETTINGS.read_text("utf-8-sig")) if SETTINGS.exists() else {}
 
 
+def save_settings(**changes):
+    settings = read_settings()
+    settings.update(changes)
+    SETTINGS.write_text(json.dumps(settings, indent=2), "utf-8")
+
+
+def matches(rule, flow):
+    """URL substring (any case) and method of an intercept or rewrite rule; empty matches all."""
+    return ((not rule["url"] or rule["url"].lower() in flow.request.pretty_url.lower())
+            and (not rule["method"] or flow.request.method.upper() == rule["method"]))
+
+
+def clean_rule(r):
+    """A rewrite rule from the UI, checked and with every field present."""
+    action = r.get("action")
+    if action not in ("header", "replace", "respond"):
+        raise ValueError(f"unknown rule action {action!r}")
+    rule = {
+        "enabled": bool(r.get("enabled", True)),
+        "url": str(r.get("url", "")).strip(),
+        "method": str(r.get("method", "")).strip().upper(),
+        # respond answers instead of the server, so it always runs on the request
+        "phase": "response" if r.get("phase") == "response" and action != "respond" else "request",
+        "action": action,
+        "name": str(r.get("name", "")).strip(),
+        "value": str(r.get("value", "")),
+        "find": str(r.get("find", "")),
+        "replace": str(r.get("replace", "")),
+        "status": int(r.get("status") or 200),
+        "type": str(r.get("type", "")).strip() or "application/json",
+        "body": str(r.get("body", "")),
+    }
+    if action == "header" and not rule["name"]:
+        raise ValueError("a header rule needs a header name")
+    if action == "replace" and not rule["find"]:
+        raise ValueError("a replace rule needs text to find")
+    if not 100 <= rule["status"] <= 599:
+        raise ValueError("status must be between 100 and 599")
+    return rule
+
+
 def host_regex(text):
     """Plain domain -> regex. A value that already contains a backslash is a regex as-is."""
     return text if "\\" in text else re.escape(text)
@@ -64,6 +105,7 @@ class TlsPeek:
         self.paused = False
         # Intercept rule: hold matching requests and/or responses until the UI releases them.
         self.icpt = {"enabled": False, "url": "", "method": "", "request": True, "response": False}
+        self.rules = []       # rewrite rules (clean_rule), applied in order, saved in settings.json
         self.server = None
         self.loop = None
         self.program = ""
@@ -86,6 +128,10 @@ class TlsPeek:
         for h in logging.getLogger().handlers:
             h.addFilter(quiet_tls_crashes)
         if ctx.options.ui_port and not self.server:
+            try:
+                self.rules = [clean_rule(r) for r in read_settings().get("rewrite_rules", [])]
+            except (ValueError, TypeError, AttributeError) as e:
+                print(f"[tls-peek] Ignoring rewrite rules in settings.json: {e}")
             if not ctx.options.ui_file and ctx.options.mode[0].startswith("local"):
                 settings = read_settings()
                 self.last_program = settings.get("program", "")
@@ -138,23 +184,67 @@ class TlsPeek:
     # --- flow tracking (event loop thread) ---
 
     def request(self, flow):
+        self.apply_rules(flow, "request")
         self.hold_if_matching(flow, "request")
         self.touch(flow)
 
     def response(self, flow):
         if ctx.options.redact:
             redact(flow)
+        self.apply_rules(flow, "response")
         self.hold_if_matching(flow, "response")
         self.touch(flow)
+
+    # --- rewrite rules ---
+
+    def apply_rules(self, flow, phase):
+        """Changes matching traffic automatically, without holding it."""
+        if not self.rules or ctx.options.ui_file or flow.is_replay:
+            return
+        if phase == "response" and flow.metadata.get("tlspeek_answered"):
+            return  # a rule answered it already
+        msg = flow.request if phase == "request" else flow.response
+        applied = 0
+        for r in self.rules:
+            if not r["enabled"] or r["phase"] != phase or not matches(r, flow):
+                continue
+            applied += 1
+            if r["action"] == "respond":
+                flow.response = http.Response.make(r["status"], r["body"], {"content-type": r["type"]})
+                flow.metadata["tlspeek_answered"] = True
+                break
+            if r["action"] == "header":
+                if r["value"]:
+                    msg.headers[r["name"]] = r["value"]
+                else:
+                    msg.headers.pop(r["name"], None)
+            else:
+                if phase == "request":
+                    flow.request.url = flow.request.url.replace(r["find"], r["replace"])
+                text = body_text(msg) if msg.raw_content else None
+                if text:
+                    msg.text = text.replace(r["find"], r["replace"])
+        if applied:
+            flow.metadata["tlspeek_rules"] = flow.metadata.get("tlspeek_rules", 0) + applied
+            if phase == "response":
+                self.resave(flow)
+
+    def set_rules(self, rules):
+        self.rules = [clean_rule(r) for r in rules]
+        save_settings(rewrite_rules=self.rules)
+
+    def resave(self, flow):
+        """The session file got the response before we changed it; save what the program received."""
+        save = ctx.master.addons.get("save")
+        if save and save.stream:
+            save.save_flow(flow)
 
     # --- intercept ---
 
     def hold_if_matching(self, flow, phase):
         """Holds the flow (the program waits) when it matches the intercept rule."""
         r = self.icpt
-        if (not r["enabled"] or not r[phase] or self.paused or flow.is_replay or not ctx.options.ui_port
-                or (r["url"] and r["url"].lower() not in flow.request.pretty_url.lower())
-                or (r["method"] and flow.request.method.upper() != r["method"].upper())):
+        if not r["enabled"] or not r[phase] or self.paused or flow.is_replay or not ctx.options.ui_port or not matches(r, flow):
             return
         flow.intercept()
 
@@ -198,10 +288,7 @@ class TlsPeek:
             if drop:
                 f.kill()
             elif edits and phase == "response":
-                # The session file got the original response before it was edited; save what the program received.
-                save = ctx.master.addons.get("save")
-                if save and save.stream:
-                    save.save_flow(f)
+                self.resave(f)
             self.touch(f, force=True)
 
         self.on_loop(go)
@@ -272,6 +359,7 @@ class TlsPeek:
             "note": f.comment,
             "held": ("response" if r else "request") if f.intercepted else None,
             "edited": f.metadata.get("tlspeek_edited", []),
+            "rules": f.metadata.get("tlspeek_rules", 0),
         }
 
     # --- called from the UI thread ---
@@ -307,6 +395,7 @@ class TlsPeek:
             "paused": self.paused,
             "home": ctx.options.ui_home,
             "intercept": self.icpt,
+            "rules": self.rules,
             "held": sum(1 for f in list(self.flows) if f.intercepted),
             "rejected": sorted(self.rejected.values(), key=lambda e: -e["last"]),
         }
@@ -314,11 +403,9 @@ class TlsPeek:
     def configure_capture(self, program, host_filter):
         """Also saves the choice to settings.json."""
         self.on_loop(lambda: self.apply(program, host_filter))
-        settings = read_settings()
         if self.program:
             self.last_program = self.program
-        settings.update(program=self.last_program, host_filter=self.host_text)
-        SETTINGS.write_text(json.dumps(settings, indent=2), "utf-8")
+        save_settings(program=self.last_program, host_filter=self.host_text)
 
     def changes(self, since):
         flows = [f for f in list(self.flows) if self.changed.get(f.id, 0) > since]
@@ -498,6 +585,11 @@ def make_handler(addon):
                     if ctx.options.ui_file:
                         raise ValueError("viewing a saved session")
                     addon.set_intercept(body)
+                    return self.send(200, addon.state())
+                if self.path == "/api/rules":
+                    if ctx.options.ui_file:
+                        raise ValueError("viewing a saved session")
+                    addon.on_loop(lambda: addon.set_rules(body.get("rules", [])))
                     return self.send(200, addon.state())
                 if self.path == "/api/release":
                     addon.release(int(body["id"]), bool(body.get("drop")), body.get("request"), body.get("response"))

@@ -24,6 +24,7 @@
   <div class="field file-only" hidden><label>Viewing</label><span id="file"></span></div>
   <button id="pause" class="live-only" type="button" aria-pressed="false" title="Let new connections through untouched and stop recording">Pause</button>
   <button id="icpt-btn" class="live-only" type="button" aria-pressed="false" title="Hold matching requests or responses so you can edit them before the program gets them; click again to turn off">Intercept</button>
+  <button id="rules-btn" class="live-only" type="button" aria-pressed="false" title="Change matching traffic automatically: set headers, replace text, answer with a fixed response">Rules</button>
   <button id="held-btn" type="button" hidden title="Show the first held request"></button>
   <button id="release-all" type="button" hidden>Continue all</button>
   <span id="status" class="status">Connecting…</span>
@@ -93,6 +94,20 @@
     <label><input type="checkbox" id="ic-req" checked> Hold requests (before they reach the server)</label>
     <label><input type="checkbox" id="ic-resp"> Hold responses (before the program gets them)</label>
     <div class="actions"><button type="button" id="ic-cancel">Cancel</button><button type="button" id="ic-save" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="rules-dlg" aria-labelledby="rules-title">
+  <form method="dialog">
+    <b id="rules-title">Rewrite rules</b>
+    <p>Rules change matching traffic on the fly, in order, without making the program wait. Changed rows get a <span class="tag">rule</span> tag. Rules are saved for the next capture.</p>
+    <div id="rule-list"></div>
+    <div class="actions">
+      <button type="button" id="rule-add" style="margin-right: auto">Add rule</button>
+      <span id="rules-error"></span>
+      <button type="button" id="rules-cancel">Cancel</button>
+      <button type="button" id="rules-save" class="primary">Save</button>
+    </div>
   </form>
 </dialog>
 

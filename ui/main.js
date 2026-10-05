@@ -3,6 +3,7 @@ import { $, S, api, esc, post } from "./core.js";
 import { render } from "./list.js";
 import { loadDetail } from "./detail.js";
 import { showIntercept } from "./intercept.js";
+import { showRules } from "./rules.js";
 import "./stats.js";
 import "./compare.js";
 import "./export.js";
@@ -33,6 +34,7 @@ export function showState(s) {
   if (document.activeElement !== $("#host")) $("#host").value = s.host_filter;
   paused = s.paused;
   showIntercept(s);
+  showRules(s);
   $("#pause").textContent = paused ? "Resume" : "Pause";
   $("#pause").setAttribute("aria-pressed", paused);
   const n = s.rejected.length;

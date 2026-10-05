@@ -463,7 +463,27 @@ try:
     post("/api/intercept", {"enabled": False})  # turning intercept off lets everything go
     t.join(10)
     assert results["off"] == "server got:y", results
+
+    # rewrite rules change traffic without holding it, and are saved in settings.json
+    assert post("/api/rules", {"rules": [{"action": "bogus"}]})[0] == 400
+    status, st = post("/api/rules", {"rules": [
+        {"action": "replace", "url": "/X", "method": "post", "find": "orig", "replace": "CHANGED"},
+        {"action": "replace", "phase": "response", "find": "server got", "replace": "rewritten"},
+        {"action": "header", "phase": "response", "name": "x-added", "value": "1"},
+        {"action": "replace", "enabled": False, "find": "rewritten", "replace": "never"}]})
+    assert status == 200 and len(st["rules"]) == 4, st
+    assert json.loads(settings_file.read_text("utf-8"))["rewrite_rules"][0]["find"] == "orig"
+    program_call("rule", b"original")
+    assert results["rule"] == "rewritten:CHANGEDinal", results
+    last = call("/api/flows")[1]["flows"][-1]
+    assert last["rules"] == 3, last
+    assert ["x-added", "1"] in call(f"/api/flow/{last['id']}")[1]["response"]["headers"]
+
+    post("/api/rules", {"rules": [{"action": "respond", "url": "/x", "type": "text/plain", "body": "mocked"}]})
+    program_call("mock", b"z")
+    assert results["mock"] == "mocked", results
+    post("/api/rules", {"rules": []})
 finally:
     proxy.kill()
     upstream.shutdown()
-print("intercept ok")
+print("intercept and rules ok")

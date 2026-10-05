@@ -111,6 +111,22 @@ tbody tr.is-held { background: color-mix(in srgb, var(--warn) 10%, transparent);
 .hold-box .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .hold-box .actions .spacer { flex: 1; }
 .hold-box .danger { color: var(--bad); }
+#rules-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#rules-dlg { width: min(680px, calc(100vw - 32px)); }
+#rules-dlg form { padding: 14px; display: grid; gap: 10px; }
+#rules-dlg p { margin: 0; color: var(--muted); font-size: 12px; }
+#rule-list { display: grid; gap: 8px; max-height: 60vh; overflow: auto; }
+#rule-list .empty { padding: 16px; }
+.rule { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; }
+.rule.off { opacity: .55; }
+.rule .row { display: flex; gap: 6px; align-items: center; }
+.rule .row input:not([type=checkbox]) { flex: 1; font-family: var(--mono); font-size: 12px; }
+.rule textarea { font-family: var(--mono); font-size: 12px; resize: vertical; width: 100%; }
+.rule small { color: var(--muted); font-size: 11px; }
+.rule .del { border: 0; color: var(--muted); font-size: 16px; padding: 0 6px; }
+.rule .del:hover { color: var(--bad); }
+#rules-dlg .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+#rules-error { color: var(--bad); }
 #icpt-dlg form { padding: 14px; display: grid; gap: 10px; }
 #icpt-dlg label { display: flex; gap: 8px; align-items: center; }
 #icpt-dlg .field-col { display: grid; gap: 4px; }
