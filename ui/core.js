@@ -12,6 +12,7 @@ export const S = {
   current: null,     // detail of the selected flow
   statsOpen: false,
   applyError: "",    // shown in the status line until the next successful change
+  file: false,       // viewing a saved session: nothing can be changed live
 };
 
 export async function api(path, opts) {

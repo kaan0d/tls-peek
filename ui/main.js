@@ -20,6 +20,7 @@ let asked = false;    // the picker opens by itself once, when a capture starts 
 export function showState(s) {
   program = s.program;
   lastProgram = s.last_program || "";
+  S.file = !!s.file;
   if (!asked && !s.file && !s.program) { asked = true; openPicker(); }
   homeUrl = s.home || "";
   if (fileMode !== !!s.file) {

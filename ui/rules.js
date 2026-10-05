@@ -55,12 +55,29 @@ function readDom() {
   });
 }
 
-$("#rules-btn").addEventListener("click", () => {
+// Opens the dialog; with a request, adds a new rule for it at the end.
+export function openRules(from) {
   draft = rules.map((r) => ({ ...r }));
+  if (from) draft.push(ruleFor(from));
   $("#rules-error").textContent = "";
   render();
   $("#rules-dlg").showModal();
-});
+  if (from) $("#rule-list .rule:last-child")?.scrollIntoView({ block: "nearest" });
+}
+$("#rules-btn").addEventListener("click", () => openRules());
+
+// A rule matching this request's host and path; its fixed response starts as the captured one.
+function ruleFor({ summary: s, response }) {
+  const u = new URL(s.url), r = blank();
+  r.url = u.host + u.pathname;
+  r.method = METHODS.includes(s.method) ? s.method : "";
+  if (response && s.status) {
+    r.status = s.status;
+    r.type = (response.headers.find(([k]) => k.toLowerCase() === "content-type") || [])[1] || r.type;
+    r.body = response.editable ? response.body : "";
+  }
+  return r;
+}
 $("#rule-list").addEventListener("change", (e) => {
   if (["action", "phase", "enabled"].includes(e.target.dataset.k)) { readDom(); render(); }
 });

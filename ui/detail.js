@@ -1,6 +1,7 @@
 // Detail panel: request/response/messages tabs, body decoders, notes, copy as, edit and resend.
 import { $, S, api, esc, header, headerLines, kv, parseHeaders, post, prettyBody } from "./core.js";
 import { holdHtml, wireHold } from "./intercept.js";
+import { openRules } from "./rules.js";
 import { render, showAllStatuses, visible } from "./list.js";
 
 let tab = "request";
@@ -124,6 +125,7 @@ function renderDetail() {
       ${current.websocket ? `<button class="tab" role="tab" aria-selected="${tab === "messages"}" data-tab="messages">Messages ${current.websocket.length}</button>` : ""}
       <span class="spacer"></span>
       <button id="resend-btn" type="button" ${current.websocket ? "disabled title='WebSocket flows cannot be resent'" : ""}>Edit &amp; resend</button>
+      ${S.file || current.websocket ? "" : `<button id="rule-btn" type="button" title="New rewrite rule for this URL and method">New rule…</button>`}
       <details class="copy"><summary>Copy ▾</summary><div class="menu">
         <button type="button" data-copy="url">URL</button>
         <button type="button" data-copy="curl">cURL</button>
@@ -143,6 +145,7 @@ function renderDetail() {
   $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
   $("#resend-btn").addEventListener("click", openResend);
+  $("#rule-btn")?.addEventListener("click", () => openRules(current));
   if (s.state === "held") wireHold(s);
   $("#close-detail").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll(".body-out").forEach(fillBody);
