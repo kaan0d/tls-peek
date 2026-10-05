@@ -368,7 +368,7 @@ class TlsPeek:
             state = "held"
         elif f.error:
             state = "error"
-        elif r is None:
+        elif r is None or not r.timestamp_end:  # no response yet, or its body is still arriving
             state = "pending"
         else:
             state = "done"
