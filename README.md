@@ -25,10 +25,12 @@ administrator rights.
 - **CA hygiene:** fresh CA per session, untrusted and deleted on stop, on window close and at the next start.
 
 ## Setup
-Nothing to install by hand. `tlspeek.cmd` installs Python 3.13 (winget, or the
+Download `tlspeek.exe` from [Releases](https://github.com/kaan0d/tls-peek/releases/latest) and run it: no Python needed.
+
+From source: `tlspeek.cmd` installs Python 3.13 (winget, or the
 python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on first run.
 
-Or build a single `tlspeek.exe` that needs neither:
+Or build the exe yourself:
 ```
 pip install mitmproxy pystray pillow pyinstaller
 pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
