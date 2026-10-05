@@ -3,6 +3,8 @@ export const $ = (s) => document.querySelector(s);
 export const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 export const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
 export const fmtMs = (ms) => ms == null ? "" : ms < 1000 ? ms + " ms" : (ms / 1000).toFixed(1) + " s";
+export const PHASES = [["connect", "TCP connect"], ["tls", "TLS handshake"], ["send", "Request sent"],
+  ["wait", "Waiting (TTFB)"], ["receive", "Download"]];
 export const kv = (pairs) => pairs.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
 
 export const S = {
@@ -12,6 +14,7 @@ export const S = {
   current: null,     // detail of the selected flow
   statsOpen: false,
   applyError: "",    // shown in the status line until the next successful change
+  rejected: [],      // hosts that refused the capture certificate
   file: false,       // viewing a saved session: nothing can be changed live
 };
 

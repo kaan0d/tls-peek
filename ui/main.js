@@ -21,6 +21,7 @@ export function showState(s) {
   program = s.program;
   lastProgram = s.last_program || "";
   S.file = !!s.file;
+  S.rejected = s.rejected;
   if (!asked && !s.file && !s.program) { asked = true; openPicker(); }
   homeUrl = s.home || "";
   if (fileMode !== !!s.file) {

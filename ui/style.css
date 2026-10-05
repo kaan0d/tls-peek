@@ -70,6 +70,15 @@ tbody tr.picked { box-shadow: inset 3px 0 var(--accent); }
 .tl-bar { position: absolute; top: 1px; height: 8px; border-radius: 2px; background: var(--accent); min-width: 2px; }
 .tl-bar.pending { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 8px); }
 .tl-bar.error { background: var(--bad); }
+.tl-phases, .phase-bar { display: flex; height: 100%; border-radius: inherit; overflow: hidden; }
+.phase-bar { height: 12px; margin: 0 12px 8px; border-radius: 3px; }
+.tl-phases span, .phase-bar span { min-width: 1px; }
+.ph-connect { background: var(--warn); } .ph-tls { background: #9b6ddf; } .ph-send { background: var(--ok); }
+.ph-wait { background: color-mix(in srgb, var(--accent) 40%, var(--panel)); } .ph-receive { background: var(--accent); }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.hint { margin: 4px 12px 16px; color: var(--muted); font-size: 12px; }
+#detail h3 small { text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.headers.phases div { grid-template-columns: 160px 1fr; }
 #selection { display: flex; gap: 6px; align-items: center; margin-left: auto; }
 #sel-count { color: var(--muted); }
 #compare { width: min(1000px, calc(100vw - 32px)); }
@@ -87,6 +96,8 @@ tbody tr.picked { box-shadow: inset 3px 0 var(--accent); }
 table.stats { margin: 0 12px 16px; width: calc(100% - 24px); min-width: 0; table-layout: auto; }
 table.stats th { position: static; }
 table.stats tbody tr { cursor: pointer; }
+table.stats tr.rejected { cursor: default; }
+.mono { font-family: var(--mono); font-size: 12px; }
 .muted { color: var(--muted); }
 .ex { padding: 14px; display: grid; gap: 12px; }
 .ex fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: grid; gap: 6px; margin: 0; }

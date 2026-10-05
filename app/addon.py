@@ -21,10 +21,11 @@ from urllib.parse import parse_qs, urlparse
 from mitmproxy import contentviews, ctx, http
 from OpenSSL import SSL
 
+import observe
 from export import body_text, make_har, make_postman, redact
 from web import UI_DIR, LocalHandler
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).resolve().parent
 # settings.json and captures\ live next to tlspeek.exe when frozen, else in the folder above app\.
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else HERE.parent
 SETTINGS = APP_DIR / "settings.json"
@@ -114,6 +115,7 @@ class TlsPeek:
         self.last_seen = None  # last UI request; None until a tab has connected
         self.bye_at = None     # when a tab last said it is closing
         self.watcher = None
+        self.opened_by = {}   # server connection id -> flow id that opened it (gets connect/TLS time)
 
     def load(self, loader):
         loader.add_option("redact", bool, False, "Mask credentials in flows (for HAR export).")
@@ -324,8 +326,14 @@ class TlsPeek:
                 self.dropped += 1
                 self.ids.pop(old.id, None)
                 self.changed.pop(old.id, None)
+        sc = flow.server_conn
+        if sc and sc.timestamp_tcp_setup and sc.id not in self.opened_by:
+            self.opened_by[sc.id] = flow.id
         self.seq += 1
         self.changed[flow.id] = self.seq
+
+    def opened_here(self, f):
+        return self.opened_by.get(f.server_conn.id) == f.id
 
     def get(self, ui_id):
         i = ui_id - self.dropped
@@ -360,6 +368,10 @@ class TlsPeek:
             "held": ("response" if r else "request") if f.intercepted else None,
             "edited": f.metadata.get("tlspeek_edited", []),
             "rules": f.metadata.get("tlspeek_rules", 0),
+            "ip": f.server_conn.peername[0] if f.server_conn.peername else None,
+            "tls": f.server_conn.tls_version,
+            "http": f.request.http_version,
+            "phases": observe.timing(f, self.opened_here(f)) if r and r.timestamp_end else None,
         }
 
     # --- called from the UI thread ---
@@ -429,7 +441,8 @@ class TlsPeek:
             ws = [{"from_client": m.from_client, "time": m.timestamp,
                    "text": m.text if m.is_text else f"<binary, {len(m.content)} bytes>"}
                   for m in f.websocket.messages[-MAX_WS_MESSAGES:]]
-        return {"summary": self.summary(f), "request": message(f.request),
+        return {"summary": self.summary(f), "connection": observe.connection(f, self.opened_here(f)),
+                "request": message(f.request),
                 "response": message(f.response), "websocket": ws}
 
     def view(self, f, part, view_name):

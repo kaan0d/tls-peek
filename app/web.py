@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 # ui\ sits next to app\ in the source tree, and next to the modules inside the frozen exe.
-UI_DIR = (Path(__file__).parent if getattr(sys, "frozen", False) else Path(__file__).parent.parent) / "ui"
+UI_DIR = (Path(__file__).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent) / "ui"
 
 
 class LocalHandler(BaseHTTPRequestHandler):

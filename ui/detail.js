@@ -1,5 +1,5 @@
 // Detail panel: request/response/messages tabs, body decoders, notes, copy as, edit and resend.
-import { $, S, api, esc, header, headerLines, kv, parseHeaders, post, prettyBody } from "./core.js";
+import { $, PHASES, S, api, esc, fmtMs, header, headerLines, kv, parseHeaders, post, prettyBody } from "./core.js";
 import { holdHtml, wireHold } from "./intercept.js";
 import { openRules } from "./rules.js";
 import { render, showAllStatuses, visible } from "./list.js";
@@ -101,6 +101,33 @@ async function fillBody(pre) {
   } catch (err) { pre.textContent = err.message; }
 }
 
+// --- connection, TLS and timing ---
+const date = (t) => new Date(t * 1000).toLocaleDateString();
+
+function connHtml(c) {
+  const t = c.timing, srv = c.server;
+  const phases = PHASES.map(([k, label]) => {
+    const v = t[k] == null && (k === "connect" || k === "tls") && srv.reused ? "reused connection" : t[k] == null ? "–" : fmtMs(t[k]);
+    return `<div><b><i class="sw ph-${k}"></i>${label}</b><span>${v}</span></div>`;
+  }).join("");
+  const side = (x) => kv([["Server", x.address], ["Peer", x.peer], ["Local", x.local], ["TLS", x.tls], ["Cipher", x.cipher],
+    ["ALPN", x.alpn], ["ALPN offered", (x.alpn_offers || []).join(", ")], ["SNI", x.sni]].filter(([, v]) => v)) || "<i>none</i>";
+  const certs = srv.certs.map((ce, i) => `<details class="jwt"${i ? "" : " open"}><summary>${i === 0 ? "Server" : ce.ca ? "CA" : "Intermediate"} · ${esc(ce.subject || ce.organization || "?")}
+      ${ce.expired ? `<span class="bad">· expired</span>` : ""} · until ${date(ce.not_after)}</summary>
+    <div class="headers">${kv([["Subject", ce.subject], ["Organization", ce.organization], ["Issuer", ce.issuer],
+      ["Valid", `${date(ce.not_before)} to ${date(ce.not_after)}`], ["Names", ce.names.join(", ")], ["Key", ce.key],
+      ["Serial", ce.serial], ["SHA-256", ce.sha256]].filter(([, v]) => v))}</div></details>`).join("");
+  return `<h3>Timing</h3>${phaseBar(t, "phase-bar")}<div class="headers phases">${phases}</div>
+    <h3>tls-peek → server <small>${esc(c.http)}</small></h3><div class="headers">${side(srv)}</div>
+    <h3>Server certificates</h3>${certs || `<div class="headers"><i>none (plain HTTP or not connected)</i></div>`}
+    <h3>Program → tls-peek</h3><div class="headers">${side(c.client)}</div>
+    <p class="hint">The program talks TLS with tls-peek, which uses its own certificate; tls-peek talks TLS with the real server.</p>`;
+}
+
+export function phaseBar(t, cls) {
+  return `<div class="${cls}">${PHASES.map(([k, label]) => t[k] ? `<span class="ph-${k}" style="flex-grow:${t[k]}" title="${label}: ${fmtMs(t[k])}"></span>` : "").join("")}</div>`;
+}
+
 function wsHtml(msgs) {
   if (!msgs.length) return `<div class="empty">No messages yet.</div>`;
   return `<h3>${msgs.length} messages</h3>` + msgs.map((m) => {
@@ -117,12 +144,14 @@ function renderDetail() {
   const body = tab === "request"
     ? (params.length ? `<h3>Query</h3><div class="headers">${kv(params)}</div>` : "") + messageHtml(current.request, false, "request")
     : tab === "response" ? messageHtml(current.response, s.state === "pending", "response")
+    : tab === "connection" ? connHtml(current.connection)
     : wsHtml(current.websocket || []);
   $("#detail").innerHTML = `
     <div class="bar" role="tablist">
       <button class="tab" role="tab" aria-selected="${tab === "request"}" data-tab="request">Request</button>
       <button class="tab" role="tab" aria-selected="${tab === "response"}" data-tab="response">Response${s.status ? " " + s.status : ""}</button>
       ${current.websocket ? `<button class="tab" role="tab" aria-selected="${tab === "messages"}" data-tab="messages">Messages ${current.websocket.length}</button>` : ""}
+      <button class="tab" role="tab" aria-selected="${tab === "connection"}" data-tab="connection">Connection</button>
       <span class="spacer"></span>
       <button id="resend-btn" type="button" ${current.websocket ? "disabled title='WebSocket flows cannot be resent'" : ""}>Edit &amp; resend</button>
       ${S.file || current.websocket ? "" : `<button id="rule-btn" type="button" title="New rewrite rule for this URL and method">New rule…</button>`}

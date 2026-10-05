@@ -17,8 +17,11 @@ export function renderStats() {
   }
   const hosts = new Map();
   for (const f of list) {
-    const h = hosts.get(f.host) || { host: f.host, n: 0, err: 0, bytes: 0, ms: 0, timed: 0 };
+    const h = hosts.get(f.host) || { host: f.host, n: 0, err: 0, bytes: 0, ms: 0, timed: 0, ips: new Set(), tls: new Set(), http: new Set() };
     h.n++; h.err += isErr(f); h.bytes += f.size;
+    if (f.ip) h.ips.add(f.ip);
+    if (f.tls) h.tls.add(f.tls.replace("TLSv", ""));
+    if (f.http) h.http.add(f.http.replace("HTTP/", ""));
     if (f.ms != null) { h.ms += f.ms; h.timed++; }
     hosts.set(f.host, h);
   }
@@ -35,10 +38,14 @@ export function renderStats() {
     <h3>Status</h3><div class="headers">${kv(Object.entries(groups).filter(([, n]) => n).map(([k, n]) => [k, String(n)])) || "<i>none</i>"}</div>
     <h3>Types</h3><div class="headers">${kv([...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [TYPES.find(([v]) => v === k)[1], String(n)]))}</div>
     <h3>Hosts</h3>
-    <table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num">Avg time</th></tr></thead>
+    <table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num">Avg time</th><th>IP</th><th>TLS</th><th>HTTP</th></tr></thead>
     <tbody>${[...hosts.values()].sort((a, b) => b.n - a.n).map((h) => `<tr data-host="${esc(h.host)}" title="Show only this host">
       <td>${esc(h.host)}</td><td class="num">${h.n}</td><td class="num ${h.err ? "err" : ""}">${h.err}</td>
-      <td class="num">${fmtSize(h.bytes)}</td><td class="num">${h.timed ? fmtMs(Math.round(h.ms / h.timed)) : "–"}</td></tr>`).join("")}</tbody></table>`;
+      <td class="num">${fmtSize(h.bytes)}</td><td class="num">${h.timed ? fmtMs(Math.round(h.ms / h.timed)) : "–"}</td>
+      <td class="mono" title="${esc([...h.ips].join(", "))}">${esc([...h.ips][0] || "")}${h.ips.size > 1 ? ` +${h.ips.size - 1}` : ""}</td>
+      <td>${esc([...h.tls].join(", "))}</td><td>${esc([...h.http].join(", "))}</td></tr>`).join("")}
+    ${S.rejected.filter((r) => !hosts.has(r.host)).map((r) => `<tr class="rejected" title="No traffic decrypted: the program refused the capture certificate">
+      <td>${esc(r.host)}</td><td colspan="7" class="err">${r.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${r.count} (pinned, or started before the capture)</td></tr>`).join("")}</tbody></table>`;
   $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;

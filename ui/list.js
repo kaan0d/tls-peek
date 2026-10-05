@@ -1,6 +1,6 @@
 // Request list: filters, search, columns (sort, resize, auto-hide), selection, timeline.
-import { $, S, api, esc, fmtMs, fmtSize, post, store } from "./core.js";
-import { select } from "./detail.js";
+import { $, PHASES, S, api, esc, fmtMs, fmtSize, post, store } from "./core.js";
+import { phaseBar, select } from "./detail.js";
 import { renderStats } from "./stats.js";
 
 let clearedBefore = 0;  // ids below this are hidden by "Clear"
@@ -183,8 +183,10 @@ function statusCell(f) {
 function timelineCell(f, t0, span) {
   const end = f.ms != null ? f.time + f.ms / 1000 : Date.now() / 1000;
   const left = ((f.time - t0) / span) * 100, width = Math.max(((end - f.time) / span) * 100, 0.6);
-  const tip = `starts +${(f.time - t0).toFixed(2)} s, ${f.ms != null ? fmtMs(f.ms) : "still waiting"}`;
-  return `<div class="bar-track" title="${tip}"><div class="tl-bar ${f.state}" style="left:${left}%;width:${Math.min(width, 100 - left)}%"></div></div>`;
+  const tip = `starts +${(f.time - t0).toFixed(2)} s, ${f.ms != null ? fmtMs(f.ms) : "still waiting"}`
+    + (f.phases ? PHASES.filter(([k]) => f.phases[k]).map(([k, label]) => `
+${label}: ${fmtMs(f.phases[k])}`).join("") : "");
+  return `<div class="bar-track" title="${esc(tip)}"><div class="tl-bar ${f.state}" style="left:${left}%;width:${Math.min(width, 100 - left)}%">${f.phases ? phaseBar(f.phases, "tl-phases") : ""}</div></div>`;
 }
 
 export function render() {

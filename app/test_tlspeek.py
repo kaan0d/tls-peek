@@ -150,6 +150,10 @@ try:
     assert state["program"] == "" and state["last_program"] == "Prev.exe", "a capture must wait for a program pick"
     status, detail = call(f"/api/flow/{done['id']}")
     assert "HTOKEN" in json.dumps(detail["request"]), "live view must show unredacted data"
+    conn = detail["connection"]
+    assert conn["server"]["tls"] == "TLSv1.2" and conn["client"]["alpn"] == "http/1.1" and not conn["server"]["reused"], conn
+    assert conn["timing"] == {"connect": 1000, "tls": 1000, "send": 1000, "wait": 1000, "receive": 1000}, conn["timing"]
+    assert done["phases"]["wait"] == 1000 and done["ip"] == "192.168.0.1" and done["http"] == "HTTP/1.1", done
     assert call("/api/search?q=alice")[1] == [done["id"]]
     assert call("/api/state", host="evil.example:80")[0] == 403
     assert call("/api/config", data=b"{not json")[0] == 400

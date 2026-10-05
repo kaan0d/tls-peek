@@ -15,11 +15,12 @@ administrator rights.
 - **Auto-stop:** closing the last UI tab stops the capture after 10 s (5 min without any tab as a fallback).
 - **Request list:** pending requests, status/type/host/bookmark filters, URL or body search, sortable and resizable columns, waterfall timeline.
 - **Request detail:** headers, query, pretty JSON, WebSocket messages, image and sandboxed HTML previews.
+- **Connection:** TLS version, cipher, ALPN, SNI and addresses on both sides, the server certificate chain, and timing split into connect, TLS, send, wait and download (also in the waterfall).
 - **Decoders:** JWTs found in headers, URL or body; Base64; mitmproxy's views (protobuf, gRPC, msgpack, hex, ...).
 - **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version. Clicking Intercept again turns it off and sends held traffic on unchanged.
 - **Rewrite rules:** set or remove a header, find and replace in URL or body, or answer with a fixed response, automatically and without holding. **New rule…** on a request starts one for its URL with the captured response. Rules are saved for the next capture.
 - **Work with requests:** bookmarks and notes, edit and resend, compare two as a diff, copy as cURL/PowerShell/Python.
-- **Stats:** totals, median and p95 time, status and type counts, per-host table for the requests shown.
+- **Stats:** totals, median and p95 time, status and type counts, per-host table with IP, TLS and HTTP version, plus hosts that refused the certificate.
 - **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default.
 - **Sessions:** every capture streams to `captures\session-<time>.mitm`; open it later in the same UI.
 - **CA hygiene:** fresh CA per session, untrusted and deleted on stop, on window close and at the next start.
@@ -96,6 +97,7 @@ app\
   win.py               flags, ports, UAC relaunch, console window, tray icon
   addon.py             mitmproxy addon: UI server, flow tracking, intercept, decoders
   export.py            credential masking, HAR and Postman export
+  observe.py           connection, TLS, certificate and timing details
   web.py               request handler base for both local servers
   test_tlspeek.py      redaction and UI API checks
 ui\
