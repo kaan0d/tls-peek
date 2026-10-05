@@ -1,6 +1,7 @@
 // Request list: filters, search, columns (sort, resize, auto-hide), selection, timeline.
 import { $, PHASES, S, api, esc, fmtMs, fmtSize, post, store } from "./core.js";
 import { phaseBar, select } from "./detail.js";
+import { renderApiMap } from "./apimap.js";
 import { renderFindings } from "./findings.js";
 import { renderStats } from "./stats.js";
 
@@ -238,6 +239,7 @@ export function render() {
   $("#compare-btn").disabled = picked.size !== 2;
   if (S.panel === "stats") renderStats();
   if (S.panel === "findings") renderFindings();
+  if (S.panel === "api") renderApiMap();
 }
 
 $("#rows").addEventListener("click", (e) => {

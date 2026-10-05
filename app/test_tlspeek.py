@@ -103,6 +103,32 @@ assert by[("cookie-flags", "shop.example.com")]["detail"] == "__Secure-x: no Sec
 assert got[0]["severity"] == "high"
 print("findings ok")
 
+# --- API map and OpenAPI ---
+import apimap
+
+assert apimap.template("/v1/users/123/posts/9f86d081884c7d659a2feaa0c55ad015?x=1") == ("/v1/users/{id}/posts/{hash}", ["id", "hash"])
+assert apimap.template("/a/1/b/2/c/3")[0] == "/a/{id}/b/{id2}/c/{id3}" and apimap.template("/")[0] == "/"
+named = [tflow.tflow(req=tutils.treq(path=f"/users/{n}".encode()),
+                    resp=tutils.tresp(headers=[(b"content-type", b"application/json")], content=b'{"login": "x", "id": 1}'))
+         for n in ("octocat", "torvalds")]
+named.append(tflow.tflow(req=tutils.treq(path=b"/users/settings"),
+                         resp=tutils.tresp(headers=[(b"content-type", b"application/json")], content=b'{"theme": "dark"}')))
+eps = apimap.endpoints(named, {c.id: i for i, c in enumerate(named)})
+assert [(e["path"], e["count"]) for e in eps] == [("/users/settings", 1), ("/users/{name}", 2)], eps
+calls = []
+for n, body in ((1, b'{"name": "a", "tags": ["x"], "age": 3}'), (2, b'{"name": "b", "tags": [], "age": 4.5, "extra": null}')):
+    calls.append(tflow.tflow(req=tutils.treq(path=f"/users/{n}?fields=all".encode()),
+                             resp=tutils.tresp(headers=[(b"content-type", b"application/json")], content=body)))
+eps = apimap.endpoints(calls, {c.id: i for i, c in enumerate(calls)})
+assert len(eps) == 1 and eps[0]["path"] == "/users/{id}" and eps[0]["count"] == 2 and eps[0]["query"] == ["fields"], eps
+props = eps[0]["responses"]["200"]["properties"]
+assert props["age"]["type"] == "number" and props["tags"]["items"] == {"type": "string"} and props["extra"] == {"nullable": True}, props
+spec = apimap.openapi(eps, "address")
+op = spec["paths"]["/users/{id}"]["get"]
+assert op["parameters"][0] == {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
+assert op["responses"]["200"]["content"]["application/json"]["schema"]["type"] == "object"
+print("api map ok")
+
 # --- console noise and certificate warnings ---
 import logging
 from types import SimpleNamespace

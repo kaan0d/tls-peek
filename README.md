@@ -20,6 +20,7 @@ administrator rights.
 - **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version. Clicking Intercept again turns it off and sends held traffic on unchanged.
 - **Rewrite rules:** set or remove a header, find and replace in URL or body, or answer with a fixed response, automatically and without holding. **New rule…** on a request starts one for its URL with the captured response. Rules are saved for the next capture.
 - **Work with requests:** bookmarks and notes, edit and resend, compare two as a diff, copy as cURL/PowerShell/Python.
+- **API map:** requests grouped into endpoints (`/users/123` and `/users/octocat` become `/users/{id}` and `/users/{name}`) with calls, statuses, median time and JSON shapes; OpenAPI 3 download per host.
 - **Findings:** passive checks on captured traffic: credentials in URLs, plain HTTP, Basic auth, JWTs with alg none, no expiry or accepted after expiry, CORS with credentials, cookie flags, old TLS, expired certificates, missing HSTS, version headers.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table with IP, TLS and HTTP version, plus hosts that refused the certificate.
 - **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default.
@@ -100,6 +101,7 @@ app\
   export.py            credential masking, HAR and Postman export
   observe.py           connection, TLS, certificate and timing details
   findings.py          passive security checks
+  apimap.py            endpoint grouping, JSON shapes, OpenAPI export
   web.py               request handler base for both local servers
   test_tlspeek.py      redaction and UI API checks
 ui\

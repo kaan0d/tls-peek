@@ -104,6 +104,12 @@ table.stats tr.rejected { cursor: default; }
 .f-ids { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .f-ids button { padding: 0 6px; font-size: 11px; font-family: var(--mono); }
 .sev-high { --sev: var(--bad); } .sev-medium { --sev: var(--warn); } .sev-low { --sev: var(--accent); } .sev-info { --sev: var(--muted); }
+a.button { border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; color: inherit; text-decoration: none; background: var(--panel); }
+a.button:hover { border-color: var(--accent); }
+table.endpoints td { white-space: nowrap; }
+table.endpoints tr.ep-detail { cursor: default; background: var(--bg); }
+table.endpoints tr.ep-detail td { white-space: normal; padding: 8px 12px; }
+table.endpoints tr.ep-detail pre { margin: 4px 0 8px; }
 .tile.sev-high b, .tile.sev-medium b, .tile.sev-low b { color: var(--sev); }
 .mono { font-family: var(--mono); font-size: 12px; }
 .muted { color: var(--muted); }

@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 from mitmproxy import contentviews, ctx, http
 from OpenSSL import SSL
 
+import apimap
 import findings
 import observe
 from export import body_text, make_har, make_postman, redact
@@ -554,6 +555,13 @@ def make_handler(addon):
                           msg.headers.get("content-type", "application/octet-stream"), [
                               ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
                               ("X-Content-Type-Options", "nosniff")])
+            elif url.path == "/api/endpoints":
+                self.send(200, apimap.endpoints(list(addon.flows), dict(addon.ids)))
+            elif url.path == "/api/openapi":
+                host = q["host"][0]
+                spec = apimap.openapi(apimap.endpoints(list(addon.flows), dict(addon.ids)), host)
+                name = re.sub(r"[^\w.-]", "_", host) + ".openapi.json"
+                self.send(200, spec, headers=[("Content-Disposition", f'attachment; filename="{name}"')])
             elif url.path == "/api/findings":
                 self.send(200, findings.check(list(addon.flows), dict(addon.ids)))
             elif url.path == "/api/search":
