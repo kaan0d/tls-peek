@@ -33,7 +33,7 @@ python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on f
 Or build the exe yourself:
 ```
 pip install mitmproxy pystray pillow pyinstaller
-pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
+pyinstaller --onefile --name tlspeek --icon app/icon.ico --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
 ```
 The exe lands in `dist\`.
 

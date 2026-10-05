@@ -138,14 +138,16 @@ def owns_console():
     return getattr(sys, "frozen", False) and ctypes.windll.kernel32.GetConsoleProcessList(procs, 8) <= 2
 
 
-def tray_icon_image(paused):
-    """ui/icon.svg is the same drawing (unpaused) for the browser tab; change both together."""
+def tray_icon_image(paused, size=64):
+    """ui/icon.svg is the same drawing (unpaused) for the browser tab, and app/icon.ico for the exe
+    (python -c "from win import tray_icon_image as t; t(False, 256).save('icon.ico')" in app\\); change all together."""
     from PIL import Image, ImageDraw
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    s = size / 64
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((2, 2, 62, 62), 14, fill=(224, 168, 74) if paused else (47, 111, 223))
-    d.ellipse((14, 12, 42, 40), outline="white", width=6)  # magnifier
-    d.line((38, 36, 52, 50), fill="white", width=8)
+    d.rounded_rectangle((2 * s, 2 * s, 62 * s, 62 * s), 14 * s, fill=(224, 168, 74) if paused else (47, 111, 223))
+    d.ellipse((14 * s, 12 * s, 42 * s, 40 * s), outline="white", width=round(6 * s))  # magnifier
+    d.line((38 * s, 36 * s, 52 * s, 50 * s), fill="white", width=round(8 * s))
     return img
 
 

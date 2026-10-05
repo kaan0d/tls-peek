@@ -20,7 +20,7 @@ jobs:
       - run: pip install mitmproxy pystray pillow pyinstaller
       - run: python app\test_tlspeek.py
         timeout-minutes: 10
-      - run: pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
+      - run: pyinstaller --onefile --name tlspeek --icon app/icon.ico --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
       - uses: actions/upload-artifact@v4
         with:
           name: tlspeek-exe
