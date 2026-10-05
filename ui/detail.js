@@ -1,5 +1,5 @@
 // Detail panel: request/response/messages tabs, body decoders, notes, copy as, edit and resend.
-import { $, PHASES, S, api, esc, fmtMs, header, headerLines, kv, parseHeaders, post, prettyBody } from "./core.js";
+import { $, PHASES, S, api, esc, fmtMs, fmtSize, header, headerLines, kv, parseHeaders, post, prettyBody } from "./core.js";
 import { holdHtml, wireHold } from "./intercept.js";
 import { openRules } from "./rules.js";
 import { render, showAllStatuses, visible } from "./list.js";
@@ -128,6 +128,38 @@ export function phaseBar(t, cls) {
   return `<div class="${cls}">${PHASES.map(([k, label]) => t[k] ? `<span class="ph-${k}" style="flex-grow:${t[k]}" title="${label}: ${fmtMs(t[k])}"></span>` : "").join("")}</div>`;
 }
 
+// --- raw views: HTTP as on the wire, TCP/UDP streams, DNS ---
+async function fillWire(id) {
+  let w;
+  try { w = await api(`/api/raw/${id}`); } catch (err) { if ($("#wire-out")) $("#wire-out").textContent = err.message; return; }
+  const el = $("#wire-out");
+  if (!el || S.current?.summary.id !== id) return;
+  const part = (p, label) => !p ? "" : `<h3>${label} <small>${p.head_size} B headers · ${p.body_size} B body${p.encoding
+    ? ` (${esc(p.encoding)}, ${p.decoded_size} B decoded)` : ""}</small></h3><pre>${esc(p.head)}${esc(p.body)}</pre>`;
+  el.className = "";
+  el.innerHTML = (/^HTTP\/[23]/.test(w.http) ? `<p class="hint">${esc(w.http)} sends binary frames with compressed headers; they are shown here in HTTP/1 text form.</p>` : "")
+    + part(w.request, "Request") + part(w.response, "Response");
+}
+
+function streamHtml(d) {
+  const msgs = d.raw_messages;
+  if (!msgs.length) return `<div class="empty">No data yet.</div>`;
+  return `<h3>${msgs.length} messages${d.dropped_messages ? ` (the ${d.dropped_messages} oldest are not shown)` : ""}</h3>` + msgs.map((m) => `
+    <div class="msg ${m.from_client ? "out" : "in"}"><div class="meta">${m.from_client ? "→ sent" : "← received"} · ${new Date(m.time * 1000).toLocaleTimeString()} · ${fmtSize(m.size)}</div>
+    <pre>${esc(m.text ?? m.hex)}</pre>${m.text != null ? `<details class="hexd"><summary>Hex</summary><pre>${esc(m.hex)}</pre></details>` : ""}</div>`).join("");
+}
+
+function dnsHtml(d) {
+  const q = d.query, r = d.response;
+  const rows = (list) => list.length ? `<table class="stats"><thead><tr><th>Name</th><th>Type</th><th class="num">TTL</th><th>Data</th></tr></thead><tbody>
+    ${list.map((a) => `<tr><td class="mono">${esc(a.name)}</td><td>${esc(a.type)}</td><td class="num">${a.ttl ?? ""}</td><td class="mono">${esc(a.data ?? "")}</td></tr>`).join("")}</tbody></table>` : `<div class="headers"><i>none</i></div>`;
+  const flags = (m) => ["authoritative_answer", "truncation", "recursion_desired", "recursion_available"].filter((k) => m[k]).map((k) => k.replace(/_/g, " ")).join(", ");
+  return `<h3>Question</h3><div class="headers">${kv(q.questions.map((x) => [x.type, x.name]))}${kv([["ID", String(q.id)], ["Flags", flags(q) || "none"]])}</div>
+    ${r ? `<h3>Answer <small>${esc(r.response_code)}</small></h3>${rows(r.answers)}
+    ${r.authorities.length ? `<h3>Authority</h3>${rows(r.authorities)}` : ""}${r.additionals.length ? `<h3>Additional</h3>${rows(r.additionals)}` : ""}
+    <div class="headers">${kv([["Flags", flags(r) || "none"]])}</div>` : `<div class="empty">No answer yet.</div>`}`;
+}
+
 function wsHtml(msgs) {
   if (!msgs.length) return `<div class="empty">No messages yet.</div>`;
   return `<h3>${msgs.length} messages</h3>` + msgs.map((m) => {
@@ -141,26 +173,32 @@ function renderDetail() {
   const current = S.current, s = current.summary;
   let params = [];
   try { params = [...new URL(s.url).searchParams]; } catch {}
+  const http = s.kind === "http";
+  const tabs = http
+    ? [["request", "Request"], ["response", "Response" + (s.status ? " " + s.status : "")],
+       ...(current.websocket ? [["messages", `Messages ${current.websocket.length}`]] : []), ["wire", "Raw"], ["connection", "Connection"]]
+    : [s.kind === "dns" ? ["dns", "DNS"] : ["stream", `Messages ${s.msgs}`], ["connection", "Connection"]];
+  if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
   const body = tab === "request"
     ? (params.length ? `<h3>Query</h3><div class="headers">${kv(params)}</div>` : "") + messageHtml(current.request, false, "request")
     : tab === "response" ? messageHtml(current.response, s.state === "pending", "response")
     : tab === "connection" ? connHtml(current.connection)
+    : tab === "wire" ? `<div id="wire-out" class="empty">Loading…</div>`
+    : tab === "stream" ? streamHtml(current)
+    : tab === "dns" ? dnsHtml(current.dns)
     : wsHtml(current.websocket || []);
   $("#detail").innerHTML = `
     <div class="bar" role="tablist">
-      <button class="tab" role="tab" aria-selected="${tab === "request"}" data-tab="request">Request</button>
-      <button class="tab" role="tab" aria-selected="${tab === "response"}" data-tab="response">Response${s.status ? " " + s.status : ""}</button>
-      ${current.websocket ? `<button class="tab" role="tab" aria-selected="${tab === "messages"}" data-tab="messages">Messages ${current.websocket.length}</button>` : ""}
-      <button class="tab" role="tab" aria-selected="${tab === "connection"}" data-tab="connection">Connection</button>
+      ${tabs.map(([k, label]) => `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}">${esc(label)}</button>`).join("")}
       <span class="spacer"></span>
-      <button id="resend-btn" type="button" ${current.websocket ? "disabled title='WebSocket flows cannot be resent'" : ""}>Edit &amp; resend</button>
+      ${http ? `<button id="resend-btn" type="button" ${current.websocket ? "disabled title='WebSocket flows cannot be resent'" : ""}>Edit &amp; resend</button>
       ${S.file || current.websocket ? "" : `<button id="rule-btn" type="button" title="New rewrite rule for this URL and method">New rule…</button>`}
       <details class="copy"><summary>Copy ▾</summary><div class="menu">
         <button type="button" data-copy="url">URL</button>
         <button type="button" data-copy="curl">cURL</button>
         <button type="button" data-copy="ps">PowerShell</button>
         <button type="button" data-copy="py">Python requests</button>
-      </div></details>
+      </div></details>` : ""}
       <button id="close-detail" type="button" title="Close (Esc)">Close</button>
     </div>
     <div class="url">${esc(s.method)} ${esc(s.url)}</div>${s.state === "held" ? holdHtml(s) : ""}
@@ -173,7 +211,8 @@ function renderDetail() {
   });
   $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
-  $("#resend-btn").addEventListener("click", openResend);
+  $("#resend-btn")?.addEventListener("click", openResend);
+  if (tab === "wire") fillWire(s.id);
   $("#rule-btn")?.addEventListener("click", () => openRules(current));
   if (s.state === "held") wireHold(s);
   $("#close-detail").addEventListener("click", closeDetail);

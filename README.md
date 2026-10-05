@@ -15,6 +15,7 @@ administrator rights.
 - **Auto-stop:** closing the last UI tab stops the capture after 10 s (5 min without any tab as a fallback).
 - **Request list:** pending requests, status/type/host/bookmark filters, URL or body search, sortable and resizable columns, waterfall timeline.
 - **Request detail:** headers, query, pretty JSON, WebSocket messages, image and sandboxed HTML previews.
+- **Raw traffic:** non-HTTP TCP and UDP streams as text and hex, DNS lookups with their answers, and each HTTP request and response as it looks on the wire with header and body byte counts.
 - **Connection:** TLS version, cipher, ALPN, SNI and addresses on both sides, the server certificate chain, and timing split into connect, TLS, send, wait and download (also in the waterfall).
 - **Decoders:** JWTs found in headers, URL or body; Base64; mitmproxy's views (protobuf, gRPC, msgpack, hex, ...).
 - **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version. Clicking Intercept again turns it off and sends held traffic on unchanged.
@@ -85,7 +86,7 @@ and rewrite rules (replace, header, fixed response) on the same calls.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
 - **Redaction is by field name** (auth, token, password, key, user, code, ...), plus JWTs and
   bearer tokens anywhere. Other free-text personal data is not masked. Check exports before you share them.
-- **WebSocket flows** can be viewed but not resent, intercepted or rewritten.
+- **WebSocket, TCP, UDP and DNS flows** can be viewed but not resent, intercepted or rewritten. Only the last 1000 messages of a stream are shown.
 - **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.
 
 ## Layout

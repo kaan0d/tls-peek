@@ -58,7 +58,7 @@ def check(flows, ids):
             entry["ids"].append(ids[f.id])
 
     for f in flows:
-        if not hasattr(f, "request") or f.id not in ids:
+        if f.type != "http" or f.id not in ids:
             continue
         req, resp = f.request, f.response
         local = req.pretty_host in LOCAL

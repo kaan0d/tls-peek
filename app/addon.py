@@ -312,6 +312,13 @@ class TlsPeek:
     def websocket_end(self, flow):
         self.touch(flow)
 
+    # Non-HTTP traffic is listed too: raw TCP and UDP streams and DNS lookups.
+    def tcp_start(self, flow):
+        self.touch(flow)
+
+    tcp_message = tcp_end = tcp_error = udp_start = udp_message = udp_end = udp_error = tcp_start
+    dns_request = dns_response = dns_error = tcp_start
+
     def touch(self, flow, force=False):
         if not ctx.options.ui_port or (self.paused and not force and flow.id not in self.ids):
             return
@@ -342,6 +349,20 @@ class TlsPeek:
         return self.flows[i] if 0 <= i < len(self.flows) else None
 
     def summary(self, f):
+        base = {
+            "id": self.ids[f.id],
+            "kind": f.type,
+            "error": f.error.msg if f.error else None,
+            "replay": bool(f.is_replay),
+            "marked": bool(f.marked),
+            "note": f.comment,
+            "edited": f.metadata.get("tlspeek_edited", []),
+            "rules": f.metadata.get("tlspeek_rules", 0),
+            "ip": f.server_conn.peername[0] if f.server_conn.peername else None,
+            "tls": f.server_conn.tls_version,
+        }
+        if f.type != "http":
+            return {**base, "status": None, "ws": None, "held": None, "http": None, "phases": None, **observe.raw_fields(f)}
         r = f.response
         if f.intercepted:
             state = "held"
@@ -352,7 +373,7 @@ class TlsPeek:
         else:
             state = "done"
         return {
-            "id": self.ids[f.id],
+            **base,
             "time": f.request.timestamp_start,
             "method": f.request.method,
             "url": f.request.pretty_url,
@@ -362,16 +383,8 @@ class TlsPeek:
             "type": (r.headers.get("content-type", "") if r else "").split(";")[0],
             "size": len(r.raw_content or b"") if r else 0,
             "ms": round((r.timestamp_end - f.request.timestamp_start) * 1000) if r and r.timestamp_end else None,
-            "error": f.error.msg if f.error else None,
             "ws": len(f.websocket.messages) if f.websocket else None,
-            "replay": bool(f.is_replay),
-            "marked": bool(f.marked),
-            "note": f.comment,
             "held": ("response" if r else "request") if f.intercepted else None,
-            "edited": f.metadata.get("tlspeek_edited", []),
-            "rules": f.metadata.get("tlspeek_rules", 0),
-            "ip": f.server_conn.peername[0] if f.server_conn.peername else None,
-            "tls": f.server_conn.tls_version,
             "http": f.request.http_version,
             "phases": observe.timing(f, self.opened_here(f)) if r and r.timestamp_end else None,
         }
@@ -426,6 +439,9 @@ class TlsPeek:
         return {"seq": self.seq, "dropped": self.dropped, "flows": [self.summary(f) for f in flows]}
 
     def detail(self, f):
+        if f.type != "http":
+            return {"summary": self.summary(f), "connection": observe.connection(f, self.opened_here(f)), **observe.raw_detail(f)}
+
         def message(msg):
             if msg is None:
                 return None
@@ -449,7 +465,7 @@ class TlsPeek:
 
     def view(self, f, part, view_name):
         """Body decoded by one of mitmproxy's content views (protobuf, gRPC, msgpack, hex, ...)."""
-        msg = f.request if part == "request" else f.response
+        msg = None if f.type != "http" else f.request if part == "request" else f.response
         if msg is None or msg.raw_content is None:
             raise ValueError("no body")
         res = contentviews.prettify_message(msg, f, view_name)
@@ -459,15 +475,22 @@ class TlsPeek:
 
     def search(self, q):
         q = q.lower()
-        return [self.ids[f.id] for f in list(self.flows)
-                if any(q in (body_text(m) or "").lower() for m in (f.request, f.response))
-                or (f.websocket and any(m.is_text and q in m.text.lower() for m in f.websocket.messages))]
+
+        def hit(f):
+            if f.type in ("tcp", "udp"):
+                return any(q in m.content.decode("utf-8", "replace").lower() for m in f.messages)
+            if f.type != "http":
+                return False
+            return (any(q in (body_text(m) or "").lower() for m in (f.request, f.response))
+                    or (f.websocket and any(m.is_text and q in m.text.lower() for m in f.websocket.messages)))
+
+        return [self.ids[f.id] for f in list(self.flows) if hit(f)]
 
     def resend(self, ui_id, method, url, headers, body):
         """Sends an edited copy of a flow; the result shows up as a new row."""
         src = self.get(ui_id)
-        if src is None:
-            raise ValueError("flow gone")
+        if src is None or src.type != "http":
+            raise ValueError("flow gone" if src is None else "only HTTP requests can be resent")
 
         def go():
             f = src.copy()
@@ -505,7 +528,7 @@ class TlsPeek:
 
     def export(self, fmt, ids=None, mask=True):
         """HAR or Postman collection of the given UI ids (all when None)."""
-        flows = list(self.flows) if ids is None else [f for f in map(self.get, ids) if f is not None]
+        flows = [f for f in (list(self.flows) if ids is None else map(self.get, ids)) if f is not None and f.type == "http"]
         if fmt == "postman":
             return make_postman(flows, mask)
         return make_har([f for f in flows if f.response], mask)
@@ -544,7 +567,7 @@ def make_handler(addon):
             elif url.path.startswith("/api/body/") or url.path.startswith("/api/view/"):
                 f = addon.get(int(url.path.rsplit("/", 1)[1]))
                 part = q.get("part", ["response"])[0]
-                msg = None if f is None else f.request if part == "request" else f.response
+                msg = None if f is None or f.type != "http" else f.request if part == "request" else f.response
                 if msg is None or msg.raw_content is None:
                     return self.send(404, {"error": "no body"})
                 if url.path.startswith("/api/view/"):
@@ -555,6 +578,11 @@ def make_handler(addon):
                           msg.headers.get("content-type", "application/octet-stream"), [
                               ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
                               ("X-Content-Type-Options", "nosniff")])
+            elif url.path.startswith("/api/raw/"):
+                f = addon.get(int(url.path.rsplit("/", 1)[1]))
+                if f is None or f.type != "http":
+                    return self.send(404, {"error": "no HTTP request with this id"})
+                self.send(200, observe.wire(f))
             elif url.path == "/api/endpoints":
                 self.send(200, apimap.endpoints(list(addon.flows), dict(addon.ids)))
             elif url.path == "/api/openapi":

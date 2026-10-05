@@ -14,9 +14,10 @@ let lastPicked = null;
 // --- filters ---
 // Arrays, not objects: object keys like "2" would sort before "all".
 const STATUS = [["all", "All"], ["2", "2xx"], ["3", "3xx"], ["4", "4xx"], ["5", "5xx"], ["pending", "Pending"], ["held", "Held"], ["error", "Error"]];
-export const TYPES = [["all", "All"], ["json", "JSON"], ["html", "HTML"], ["js", "JS"], ["css", "CSS"], ["image", "Image"], ["ws", "WS"], ["other", "Other"]];
+export const TYPES = [["all", "All"], ["json", "JSON"], ["html", "HTML"], ["js", "JS"], ["css", "CSS"], ["image", "Image"], ["ws", "WS"], ["raw", "TCP/UDP/DNS"], ["other", "Other"]];
 
 export function typeOf(f) {
+  if (f.kind !== "http") return "raw";
   if (f.ws != null) return "ws";
   const t = f.type;
   if (t.includes("json")) return "json";
@@ -79,7 +80,7 @@ $("#search").addEventListener("input", () => { clearTimeout(searchTimer); search
 $("#in-bodies").addEventListener("change", runSearch);
 
 // --- columns ---
-const pathOf = (f) => f.url.replace(/^\w+:\/\/[^/]+/, "") || "/";
+const pathOf = (f) => f.info ?? (f.url.replace(/^\w+:\/\/[^/]+/, "") || "/");
 const COLUMNS = [
   { key: "pick", label: "", width: 30 },
   { key: "star", label: "", width: 28 },
@@ -178,6 +179,7 @@ export function visible() {
 function statusCell(f) {
   if (f.state === "held") return `<span class="held" title="Held: the program is waiting">⏸ ${f.held === "response" ? f.status : "held"}</span>`;
   if (f.state === "error") return `<span class="err" title="${esc(f.error)}">ERR</span>`;
+  if (f.kind !== "http") return `<span class="${f.label === "NOERROR" || f.label === "closed" ? "muted" : f.label === "open" ? "s2" : "err"}">${esc(f.label ?? "···")}</span>`;
   if (f.state === "pending") return `<span class="pending" title="Waiting for response">···</span>`;
   return `<span class="s${String(f.status)[0]}">${f.status}</span>`;
 }

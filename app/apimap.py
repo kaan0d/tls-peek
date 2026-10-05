@@ -92,7 +92,7 @@ def json_shape(msg):
 def endpoints(flows, ids):
     groups = {}
     for f in flows:
-        if not hasattr(f, "request") or f.id not in ids or f.is_replay:
+        if f.type != "http" or f.id not in ids or f.is_replay:
             continue
         r = f.request
         path, params = template(r.path)

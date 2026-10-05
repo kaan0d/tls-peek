@@ -245,11 +245,11 @@ finally:
 print("ui ok")
 
 # --- Stop button and auto-stop ---
-def start(*extra):
+def start(*extra, file="c.mitm"):
     global port
     port = win.free_port()
     proc = subprocess.Popen(
-        [*mitmdump, "-q", "-n", "-r", tmp / "c.mitm", "--set", "keepserving=true",
+        [*mitmdump, "-q", "-n", "-r", tmp / file, "--set", "keepserving=true",
          "--set", f"confdir={tmp / 'conf'}", "-s", here / "addon.py", "--set", f"ui_port={port}", *extra])
     for _ in range(50):
         try:
@@ -371,6 +371,34 @@ try:
 finally:
     proc.kill()
 print("export ok")
+
+# --- TCP, UDP and DNS flows are listed; HTTP has a raw view ---
+with open(tmp / "raw.mitm", "wb") as fo:
+    w = io.FlowWriter(fo)
+    for fl in (tflow.ttcpflow(), tflow.tudpflow(), tflow.tdnsflow(resp=True), tflow.tflow(resp=True)):
+        w.add(fl)
+proc = start(file="raw.mitm")
+try:
+    for _ in range(50):
+        flows = call("/api/flows")[1]["flows"]
+        if len(flows) == 4:
+            break
+        time.sleep(0.2)
+    tcp, udp, dns, web = flows
+    assert [f["kind"] for f in flows] == ["tcp", "udp", "dns", "http"], flows
+    assert tcp["method"] == "TCP" and tcp["msgs"] == 2 and dns["info"] == "dns.google A → 8.8.8.8, 8.8.4.4", (tcp, dns)
+    d = call(f"/api/flow/{tcp['id']}")[1]
+    assert d["raw_messages"][0]["text"] == "hello" and d["raw_messages"][0]["hex"].startswith("000000  68 65"), d
+    assert call(f"/api/flow/{dns['id']}")[1]["dns"]["response"]["answers"][0]["data"] == "8.8.8.8"
+    assert call("/api/search?q=hello")[1] == [tcp["id"], udp["id"]]
+    wire = call(f"/api/raw/{web['id']}")[1]
+    assert wire["request"]["head"].startswith("GET /path HTTP/1.1\r\n") and wire["response"]["body_size"] == 7, wire
+    assert call(f"/api/raw/{tcp['id']}")[0] == 404 and call(f"/api/body/{tcp['id']}")[0] == 404
+    assert call("/api/findings")[0] == 200 and len(call("/api/endpoints")[1]) == 1
+    assert len(post("/api/export", {"format": "har"})[1]["log"]["entries"]) == 1
+finally:
+    proc.kill()
+print("raw flows ok")
 
 # --- tray: its polling must not keep an unattended capture alive ---
 proc = start("--set", "ui_auto_stop=4")
