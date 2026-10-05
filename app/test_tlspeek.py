@@ -149,6 +149,7 @@ try:
     assert call("/api/search?q=alice")[1] == [done["id"]]
     assert call("/api/state", host="evil.example:80")[0] == 403
     assert call("/api/config", data=b"{not json")[0] == 400
+    assert call("/api/flows?since=x")[0] == 400 and call("/api/flow/abc")[0] == 400
 
     status, state = post("/api/config", {"program": r"C:\x\Some App.exe", "host_filter": "api.example.com"})
     assert status == 200 and state["program"] == "Some App.exe", state

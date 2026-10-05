@@ -411,6 +411,12 @@ def make_handler(addon):
         def do_GET(self):
             if not self.allowed():
                 return
+            try:
+                self.get()
+            except (ValueError, KeyError) as e:  # a malformed id or query
+                self.send(400, {"error": str(e)})
+
+        def get(self):
             if not self.headers.get("X-Tlspeek-Tray"):
                 addon.seen()
             url = urlparse(self.path)
