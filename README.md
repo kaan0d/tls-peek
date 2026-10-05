@@ -32,7 +32,7 @@ Or build a single `tlspeek.exe` that needs neither:
 pip install mitmproxy pystray pillow pyinstaller
 pyinstaller --onefile --name tlspeek --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
 ```
-The exe lands in `dist\`. Put `settings.json` next to it (optional).
+The exe lands in `dist\`.
 
 ## Usage
 Double-click `tlspeek.cmd` (or `tlspeek.exe`). The start page opens in your browser.
@@ -55,7 +55,7 @@ tlspeek.exe cleanup                  untrust and delete the CA after a crash
 python app\tlspeek.py ...            same commands without the exe
 ```
 
-`settings.json`: `program`, `host_filter` (plain domain; a value with `\` is a regex),
+`settings.json` (created next to `tlspeek.cmd` or the exe, not in git): `program` (last used), `host_filter` (plain domain; a value with `\` is a regex),
 `ui_port` (default 8081), `auto_stop_seconds` (default 300, 0 = never stop on its own),
 `keep_days` (older captures are deleted, 0 = keep all).
 
@@ -84,7 +84,7 @@ on real proxied calls: the caller waits, gets an edited request and a faked resp
 ## Layout
 ```
 tlspeek.cmd            launcher
-settings.json          program, host filter, UI port, auto-stop, capture retention
+settings.json          created on first use: last program, host filter, UI port, auto-stop, retention
 app\
   bootstrap.ps1        installs Python and the Python packages if missing, runs tlspeek.py
   tlspeek.py           command line: capture / open / cleanup, CA handling, HAR on exit

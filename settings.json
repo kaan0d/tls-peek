@@ -1,8 +1,0 @@
-{
-  "_comment": "Saved by the tls-peek UI. program: .exe to monitor. host_filter: optional plain domain like api.example.com (empty = all traffic). ui_port: port of the UI. auto_stop_seconds: stop when no UI tab polled for this long; closing the last tab stops after 10 s (0 = never). keep_days: captures older than this are deleted (0 = keep all).",
-  "program": "Discord.exe",
-  "host_filter": "",
-  "ui_port": 8081,
-  "keep_days": 7,
-  "auto_stop_seconds": 300
-}

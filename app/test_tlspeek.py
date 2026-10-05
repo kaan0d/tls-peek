@@ -2,6 +2,7 @@
 
 Run: python app/test_tlspeek.py   (needs mitmproxy installed)
 """
+import atexit
 import json
 import pathlib
 import subprocess
@@ -23,6 +24,18 @@ import win
 here = pathlib.Path(__file__).parent
 root = here.parent  # settings.json and the ui folder
 tmp = pathlib.Path(tempfile.mkdtemp())
+# The tests change settings.json (it is not in git); put the user's copy back at the end.
+settings_file = root / "settings.json"
+settings_before = settings_file.read_bytes() if settings_file.exists() else None
+
+
+@atexit.register
+def restore_settings():
+    if settings_before is None:
+        settings_file.unlink(missing_ok=True)
+    else:
+        settings_file.write_bytes(settings_before)
+
 
 # --- field-name matching ---
 for name in ("Authorization", "X-Api-Key", "accessToken", "PASSWORD", "user_name", "sessionId", "Set-Cookie"):
@@ -94,7 +107,6 @@ class Echo(BaseHTTPRequestHandler):
 echo = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
 threading.Thread(target=echo.serve_forever, daemon=True).start()
 port = win.free_port()
-settings_before = (root / "settings.json").read_bytes()
 # Same entry point as tlspeek.py, so it works with a --user install where mitmdump.exe is not next to python.exe.
 mitmdump = [sys.executable, "-c", "from mitmproxy.tools.main import mitmdump; mitmdump()"]
 srv = subprocess.Popen(
@@ -160,7 +172,7 @@ try:
 finally:
     srv.kill()
     echo.shutdown()
-    (root / "settings.json").write_bytes(settings_before)
+    restore_settings()
 print("ui ok")
 
 # --- Stop button and auto-stop ---
