@@ -70,7 +70,8 @@ python app\tlspeek.py ...            same commands without the exe
 ```
 python app\test_tlspeek.py
 ```
-Covers field-name matching and redacted HAR export, then runs the UI server and checks
+Covers field-name matching and redacted HAR export, findings, endpoint grouping and OpenAPI output, then
+runs the UI server and checks connection and timing data, TCP/UDP/DNS flows and the raw HTTP view,
 change tracking, pending state, body search, the Host guard, live program switching,
 pause, edit-and-resend against a local echo server, Stop and auto-stop, bookmarks and
 notes surviving in the session file, decoders and sandboxed previews, HAR and Postman
