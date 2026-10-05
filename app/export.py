@@ -19,6 +19,12 @@ SECRET_WORDS = {
 }
 NOT_SECRET = {"user-agent"}
 WORD = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+")
+# Secrets recognised by their value, wherever they appear: JWTs and bearer tokens.
+SECRET_VALUE = re.compile(r"eyJ[\w-]{4,}\.eyJ[\w-]{4,}\.[\w-]*|(?<=[Bb]earer )[\w~+/.=-]+")
+
+
+def scrub(text):
+    return SECRET_VALUE.sub(MASK, text)
 
 
 def is_secret(name):
@@ -36,9 +42,9 @@ def mask_json(obj):
 
 
 def mask_message(msg):
-    for name in list(msg.headers):
-        if is_secret(name):
-            msg.headers[name] = MASK
+    for name in set(msg.headers):
+        values = msg.headers.get_all(name)
+        msg.headers.set_all(name, [MASK if is_secret(name) else scrub(v) for v in values])
     ctype = msg.headers.get("content-type", "")
     if not msg.raw_content:
         return
@@ -50,11 +56,14 @@ def mask_message(msg):
     elif "x-www-form-urlencoded" in ctype:
         pairs = parse_qsl(msg.text, keep_blank_values=True)
         msg.text = urlencode([(k, MASK if is_secret(k) else v) for k, v in pairs])
+    text = body_text(msg)
+    if text and scrub(text) != text:
+        msg.text = scrub(text)
 
 
 def redact(flow):
     req = flow.request
-    req.query = [(k, MASK if is_secret(k) else v) for k, v in req.query.items(multi=True)]
+    req.query = [(k, MASK if is_secret(k) else scrub(v)) for k, v in req.query.items(multi=True)]
     mask_message(req)
     if flow.response:
         mask_message(flow.response)

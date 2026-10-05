@@ -49,9 +49,10 @@ f = tflow.tflow(
         method=b"POST", path=b"/login?token=QTOKEN&page=2",
         headers=[(b"authorization", b"Bearer HTOKEN"), (b"content-type", b"application/json"),
                  (b"user-agent", b"KeepMe/1.0")],
-        content=b'{"username": "alice", "password": "PW", "data": {"apiKey": "K", "n": 1}}',
+        content=b'{"username": "alice", "password": "PW", "data": {"apiKey": "K", "n": 1, "blob": "eyJhbGciOiJ.eyJzdWIiOiJ.SIGJWT"}}',
     ),
-    resp=tutils.tresp(headers=[(b"set-cookie", b"sid=SID")], content=b"ok"),
+    resp=tutils.tresp(headers=[(b"set-cookie", b"sid=SID"), (b"x-debug", b"seen Bearer HDRTOKEN")],
+                      content=b"ok, use Bearer BODYTOKEN next time"),
 )
 pending = tflow.tflow(req=tutils.treq(path=b"/slow"))  # no response yet
 with open(tmp / "c.mitm", "wb") as fo:
@@ -61,7 +62,7 @@ with open(tmp / "c.mitm", "wb") as fo:
 
 tlspeek.export_har(tmp / "c")
 har = (tmp / "c.har").read_text()
-for secret in ("QTOKEN", "HTOKEN", "alice", "PW", '"K"', "SID"):
+for secret in ("QTOKEN", "HTOKEN", "alice", "PW", '"K"', "SID", "SIGJWT", "HDRTOKEN", "BODYTOKEN"):
     assert secret not in har, f"{secret} leaked into HAR"
 entry = json.loads(har)["log"]["entries"][0]
 assert "page=2" in entry["request"]["url"] and '"n": 1' in entry["request"]["postData"]["text"]

@@ -76,8 +76,8 @@ on real proxied calls: the caller waits, gets an edited request and a faked resp
 - **Auto-stop needs an open tab.** A tab the browser puts to sleep (Edge sleeping tabs) counts as closed after `auto_stop_seconds`.
 - **Bodies over 5 MB** are streamed through and not stored or shown.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
-- **Redaction is by field name** (auth, token, password, key, user, code, ...). Free-text
-  personal data in bodies is not masked. Check exports before you share them.
+- **Redaction is by field name** (auth, token, password, key, user, code, ...), plus JWTs and
+  bearer tokens anywhere. Other free-text personal data is not masked. Check exports before you share them.
 - **WebSocket flows** can be viewed but not resent or intercepted.
 - **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.
 
