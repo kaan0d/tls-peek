@@ -1,6 +1,7 @@
 // Request list: filters, search, columns (sort, resize, auto-hide), selection, timeline.
 import { $, PHASES, S, api, esc, fmtMs, fmtSize, post, store } from "./core.js";
 import { phaseBar, select } from "./detail.js";
+import { renderFindings } from "./findings.js";
 import { renderStats } from "./stats.js";
 
 let clearedBefore = 0;  // ids below this are hidden by "Clear"
@@ -190,7 +191,7 @@ ${label}: ${fmtMs(f.phases[k])}`).join("") : "");
 }
 
 export function render() {
-  $("main").classList.toggle("has-detail", S.selected != null || S.statsOpen);
+  $("main").classList.toggle("has-detail", S.selected != null || S.panel);
   const hosts = [...new Set([...S.flows.values()].map((f) => f.host))].sort();
   const pick = $("#host-pick");
   if (pick.options.length - 1 !== hosts.length) {
@@ -235,7 +236,8 @@ export function render() {
   $("#selection").hidden = picked.size === 0;
   $("#sel-count").textContent = `${picked.size} selected`;
   $("#compare-btn").disabled = picked.size !== 2;
-  if (S.statsOpen) renderStats();
+  if (S.panel === "stats") renderStats();
+  if (S.panel === "findings") renderFindings();
 }
 
 $("#rows").addEventListener("click", (e) => {

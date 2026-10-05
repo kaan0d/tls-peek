@@ -53,4 +53,4 @@ export function renderStats() {
     render();
   }));
 }
-$("#stats-btn").addEventListener("click", () => { S.statsOpen = true; S.selected = null; render(); });
+$("#stats-btn").addEventListener("click", () => { S.panel = "stats"; S.selected = null; render(); });

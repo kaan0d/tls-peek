@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 from mitmproxy import contentviews, ctx, http
 from OpenSSL import SSL
 
+import findings
 import observe
 from export import body_text, make_har, make_postman, redact
 from web import UI_DIR, LocalHandler
@@ -553,6 +554,8 @@ def make_handler(addon):
                           msg.headers.get("content-type", "application/octet-stream"), [
                               ("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
                               ("X-Content-Type-Options", "nosniff")])
+            elif url.path == "/api/findings":
+                self.send(200, findings.check(list(addon.flows), dict(addon.ids)))
             elif url.path == "/api/search":
                 self.send(200, addon.search(q.get("q", [""])[0]))
             elif url.path == "/api/processes":

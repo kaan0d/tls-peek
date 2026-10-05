@@ -12,7 +12,7 @@ export const S = {
   seq: 0,            // server change counter we have seen
   selected: null,    // id shown in the detail panel
   current: null,     // detail of the selected flow
-  statsOpen: false,
+  panel: null,       // "stats" or "findings" while one is shown instead of a request
   applyError: "",    // shown in the status line until the next successful change
   rejected: [],      // hosts that refused the capture certificate
   file: false,       // viewing a saved session: nothing can be changed live

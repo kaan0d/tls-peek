@@ -69,6 +69,40 @@ assert "page=2" in entry["request"]["url"] and '"n": 1' in entry["request"]["pos
 assert "KeepMe/1.0" in har
 print("redaction ok")
 
+# --- findings: passive checks ---
+import base64
+import findings
+
+
+def jwt(head, body):
+    enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
+    return f"{enc(head)}.{enc(body)}.sig"
+
+
+a = tflow.tflow(
+    req=tutils.treq(scheme=b"http", host=b"api.example.com", port=80, path=b"/login?access_token=abc&page=1",
+                    headers=[(b"authorization", b"Basic dTpw"), (b"x-token", jwt({"alg": "none"}, {"sub": "u"}).encode())]),
+    resp=tutils.tresp(headers=[(b"set-cookie", b"sid=1; Path=/"), (b"access-control-allow-origin", b"*"),
+                               (b"server", b"nginx/1.2.3")]))
+b = tflow.tflow(
+    req=tutils.treq(scheme=b"https", host=b"shop.example.com", port=443, path=b"/me",
+                    headers=[(b"origin", b"https://evil.example"), (b"authorization", f"Bearer {jwt({'alg': 'HS256'}, {'exp': 1})}".encode())]),
+    resp=tutils.tresp(headers=[(b"access-control-allow-origin", b"https://evil.example"),
+                               (b"access-control-allow-credentials", b"true"),
+                               (b"set-cookie", b"s=2; Secure; HttpOnly; SameSite=Lax"),
+                               (b"set-cookie", b"__Secure-x=1; HttpOnly; SameSite=Lax")]))
+got = findings.check([a, b], {a.id: 0, b.id: 1})
+by = {(x["check"], x["host"]): x for x in got}
+for key in ("plain-http", "secret-in-url", "basic-auth", "jwt-none", "jwt-no-exp", "cookie-flags", "cors-wildcard", "server-version"):
+    assert (key, "api.example.com") in by and by[(key, "api.example.com")]["ids"] == [0], key
+for key in ("cors-credentials", "jwt-expired-accepted", "no-hsts"):
+    assert (key, "shop.example.com") in by, key
+assert by[("secret-in-url", "api.example.com")]["detail"] == "access_token"
+assert by[("cookie-flags", "api.example.com")]["detail"] == "sid: no HttpOnly, SameSite"
+assert by[("cookie-flags", "shop.example.com")]["detail"] == "__Secure-x: no Secure"  # the name is not the flag
+assert got[0]["severity"] == "high"
+print("findings ok")
+
 # --- console noise and certificate warnings ---
 import logging
 from types import SimpleNamespace

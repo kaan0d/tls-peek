@@ -9,14 +9,14 @@ let tab = "request";
 export function closeDetail() {
   S.selected = null;
   S.current = null;
-  S.statsOpen = false;
+  S.panel = null;
   $("#detail").innerHTML = "";
   render();
 }
 
 export function select(id) {
   S.selected = id;
-  S.statsOpen = false;
+  S.panel = null;
   if (tab === "messages") tab = "request";
   $("#detail").scrollTop = 0;
   render();
@@ -243,7 +243,7 @@ $("#rs-send").addEventListener("click", async () => {
 
 // Esc closes the panel; arrow keys move through the shown requests.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && (S.selected != null || S.statsOpen) && !document.querySelector("dialog[open]")) {
+  if (e.key === "Escape" && (S.selected != null || S.panel) && !document.querySelector("dialog[open]")) {
     closeDetail();
     return;
   }
