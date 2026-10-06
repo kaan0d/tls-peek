@@ -89,7 +89,7 @@ def capture():
     settings = addon.read_settings()
     port = int(flag("--port") or settings.get("ui_port") or 8081)
     if not port_free(port):
-        fail(f"Port {port} is busy. Is tls-peek already running? Otherwise change ui_port in settings.json.")
+        fail(f"Port {port} is busy. Is tls-peek already running? Otherwise change ui_port in {addon.SETTINGS}.")
 
     if not is_admin():
         tray = tray_available()

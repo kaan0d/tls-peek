@@ -63,7 +63,7 @@ td.actions > * { margin-left: 4px; }
   </section>
 
   <section aria-labelledby="ses-title">
-    <h2 id="ses-title">Saved sessions</h2>
+    <h2 id="ses-title">Saved sessions <button id="open-folder" type="button">Open folder</button></h2>
     <table id="sessions" hidden>
       <thead><tr><th>Captured</th><th class="num hide-narrow">Size</th><th class="hide-narrow">File</th><th></th></tr></thead>
       <tbody></tbody>
@@ -132,6 +132,7 @@ function render(s) {
     ? (capRunning ? "Trusted while the capture runs; it is removed when the capture stops."
                   : "A capture certificate is still trusted (left from a crash).")
     : "No capture certificate is trusted." + (s.ca_folder ? " A leftover CA folder exists." : "");
+  $("#open-folder").title = s.folder;
   $("#cleanup").disabled = capRunning || (!s.ca_trusted && !s.ca_folder);
   if (s.message && !waitingFor) notice(s.message);
 }
@@ -172,6 +173,8 @@ $("#sessions").addEventListener("click", async (e) => {
     }
   } catch (err) { waitingFor = null; notice(err.message, true); }
 });
+
+$("#open-folder").addEventListener("click", () => call("/api/open-folder", {}).catch((err) => notice(err.message, true)));
 
 $("#cleanup").addEventListener("click", async () => {
   $("#cleanup").disabled = true;

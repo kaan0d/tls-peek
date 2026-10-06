@@ -48,7 +48,7 @@ class Home:
             c = self.child
             child = {"kind": c["kind"], "port": c["port"], "file": c.get("file", ""), "up": is_up(c["port"])}
         return {"child": child, "sessions": self.sessions(), "ca_trusted": ca_trusted(),
-                "ca_folder": CONFDIR.exists(), "message": self.message}
+                "ca_folder": CONFDIR.exists(), "folder": str(CAPTURES), "message": self.message}
 
     def session_path(self, name):
         """A file in captures\\ by bare name; rejects anything that points elsewhere."""
@@ -177,6 +177,9 @@ def make_home_handler(home):
                     home.delete(body["name"])
                 elif self.path == "/api/cleanup":
                     home.cleanup()
+                elif self.path == "/api/open-folder":
+                    CAPTURES.mkdir(exist_ok=True)
+                    os.startfile(CAPTURES)
                 else:
                     return self.send(404, {"error": "not found"})
                 self.send(200, home.status())
@@ -193,7 +196,7 @@ def run_home():
             if not NO_BROWSER:
                 webbrowser.open(f"http://127.0.0.1:{port}")
             return
-        fail(f"Port {port} is busy. Change ui_port in settings.json.")
+        fail(f"Port {port} is busy. Change ui_port in {addon.SETTINGS}.")
     home = Home(port)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_home_handler(home))
     threading.Thread(target=server.serve_forever, daemon=True).start()

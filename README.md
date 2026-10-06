@@ -25,7 +25,7 @@ administrator rights.
 - **Findings:** passive checks on captured traffic: credentials in URLs, plain HTTP, Basic auth, JWTs with alg none, no expiry or accepted after expiry, CORS with credentials, cookie flags, old TLS, expired certificates, missing HSTS, version headers.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table with IP, TLS and HTTP version, plus hosts that refused the certificate.
 - **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default.
-- **Sessions:** every capture streams to `captures\session-<time>.mitm`; open it later in the same UI.
+- **Sessions:** every capture streams to `captures\session-<time>.mitm`; open it later in the same UI. **Open folder** on the start page shows them.
 - **CA hygiene:** fresh CA per session, untrusted and deleted on stop, on window close and at the next start.
 
 ## Setup
@@ -62,7 +62,8 @@ tlspeek.exe cleanup                  untrust and delete the CA after a crash
 python app\tlspeek.py ...            same commands without the exe
 ```
 
-`settings.json` (created next to `tlspeek.cmd` or the exe, not in git): `program` (last used), `host_filter` (plain domain; a value with `\` is a regex),
+Data folder: `%LOCALAPPDATA%\tls-peek` for the exe (never synced, survives moving the exe), the repo folder for `tlspeek.cmd`. It holds `captures\`, the CA while a capture runs, and
+`settings.json` (created on first use): `program` (last used), `host_filter` (plain domain; a value with `\` is a regex),
 `ui_port` (default 8081), `auto_stop_seconds` (default 300, 0 = never stop on its own),
 `keep_days` (older captures are deleted, 0 = keep all).
 
@@ -93,7 +94,7 @@ and rewrite rules (replace, header, fixed response) on the same calls.
 ## Layout
 ```
 tlspeek.cmd            launcher
-settings.json          created on first use: last program, host filter, UI port, auto-stop, retention
+settings.json          created on first use (exe: in %LOCALAPPDATA%\tls-peek)
 app\
   bootstrap.ps1        installs Python and the Python packages if missing, runs tlspeek.py
   tlspeek.py           command line: capture / open / cleanup, CA handling, HAR on exit

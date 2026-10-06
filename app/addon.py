@@ -11,6 +11,7 @@ import asyncio
 import ctypes
 import json
 import logging
+import os
 import re
 import sys
 import threading
@@ -29,8 +30,10 @@ from export import body_text, make_har, make_postman, redact
 from web import UI_DIR, LocalHandler
 
 HERE = Path(__file__).resolve().parent
-# settings.json and captures\ live next to tlspeek.exe when frozen, else in the folder above app\.
-APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else HERE.parent
+# settings.json, captures\ and the CA live in %LOCALAPPDATA%\tls-peek for the exe: it survives moving
+# the exe and is never synced to the cloud like Documents can be. From source: the folder above app\.
+APP_DIR = Path(os.environ["LOCALAPPDATA"]) / "tls-peek" if getattr(sys, "frozen", False) else HERE.parent
+APP_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS = APP_DIR / "settings.json"
 CONFDIR = APP_DIR / ".mitmproxy"
 CAPTURES = APP_DIR / "captures"
