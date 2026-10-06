@@ -34,14 +34,21 @@ export async function loadDetail() {
     $("#detail").innerHTML = `<div class="empty">${esc(err.message)}</div>`;
     return;
   }
-  // Don't close the copy menu, interrupt typing a note or wipe edits to a held request.
-  if (document.querySelector("details.copy[open]") || document.activeElement?.id === "note") return;
+  // Don't close the copy menu, interrupt typing a note or a click, or wipe edits to a held request.
+  if (document.querySelector("details.copy[open], #detail:active") || document.activeElement?.id === "note") return;
   const box = document.querySelector(".hold-box");
   if (box && S.current.summary.state === "held" && box.dataset.phase === S.current.summary.held
       && box.dataset.id === String(S.current.summary.id)) return;
   const top = $("#detail").scrollTop;
   renderDetail();
   $("#detail").scrollTop = top;
+}
+
+// An open TCP/UDP stream changes every second; only its Messages tab needs the new data.
+export function refreshDetail(summary) {
+  const label = document.querySelector('#detail .tab[data-tab="stream"]');
+  if (label && tab !== "stream" && S.current?.summary.id === summary.id) label.textContent = `Messages ${summary.msgs}`;
+  else loadDetail();
 }
 
 // --- decoders and previews ---
@@ -209,7 +216,10 @@ function renderDetail() {
     clearTimeout(noteTimer);
     noteTimer = setTimeout(() => post("/api/mark", { id: s.id, note: e.target.value }).catch(() => {}), 600);
   });
-  $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
+  $("#detail").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => {
+    tab = b.dataset.tab;
+    if (tab === "stream") loadDetail(); else renderDetail();  // messages are not refreshed while another tab is shown
+  }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
   $("#resend-btn")?.addEventListener("click", openResend);
   if (tab === "wire") fillWire(s.id);

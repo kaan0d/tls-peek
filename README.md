@@ -87,7 +87,7 @@ and rewrite rules (replace, header, fixed response) on the same calls.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
 - **Redaction is by field name** (auth, token, password, key, user, code, ...), plus JWTs and
   bearer tokens anywhere. Other free-text personal data is not masked. Check exports before you share them.
-- **WebSocket, TCP, UDP and DNS flows** can be viewed but not resent, intercepted or rewritten. Only the last 1000 messages of a stream are shown.
+- **WebSocket, TCP, UDP and DNS flows** can be viewed but not resent, intercepted or rewritten. Only the last 1000 WebSocket and 200 TCP or UDP messages are shown.
 - **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.
 
 ## Layout

@@ -66,8 +66,8 @@ def connection(f, opened_here):
 
 # --- non-HTTP flows (TCP, UDP, DNS) and HTTP as on the wire ---
 
-MAX_MESSAGES = 1000
-MAX_HEX = 4096   # bytes of each message shown as a hex dump
+MAX_MESSAGES = 200  # the detail of a live stream is fetched every second; keep it small
+MAX_HEX = 1024   # bytes of each message shown as a hex dump
 MAX_TEXT = 65536
 
 

@@ -1,7 +1,7 @@
 // Entry point: header controls, polling, program picker, stop and the cert warning bar.
 import { $, S, api, esc, post } from "./core.js";
 import { render } from "./list.js";
-import { loadDetail } from "./detail.js";
+import { refreshDetail } from "./detail.js";
 import { showIntercept } from "./intercept.js";
 import { showRules } from "./rules.js";
 import "./stats.js";
@@ -57,7 +57,8 @@ async function poll() {
       for (const f of ch.flows) S.flows.set(f.id, f);
       S.seq = ch.seq;
       render();
-      if (S.selected != null && ch.flows.some((f) => f.id === S.selected)) loadDetail();
+      const sel = ch.flows.find((f) => f.id === S.selected);
+      if (sel) refreshDetail(sel);
     }
     $("#status").className = S.applyError ? "status off" : paused ? "status paused" : "status live";
     $("#status").textContent = S.applyError || (state.file ? "Saved session" : paused ? "Paused" : program ? "Capturing" : "No program");
