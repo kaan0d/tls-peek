@@ -463,7 +463,19 @@ class TlsPeek:
 
     def changes(self, since):
         flows = [f for f in list(self.flows) if self.changed.get(f.id, 0) > since]
-        return {"seq": self.seq, "dropped": self.dropped, "flows": [self.summary(f) for f in flows]}
+        return {"seq": self.seq, "dropped": self.dropped, "flows": [self.safe_summary(f) for f in flows]}
+
+    def safe_summary(self, f):
+        """One flow this code cannot read must not empty the whole list: it shows as an error row."""
+        try:
+            return self.summary(f)
+        except Exception as e:
+            print(f"[tls-peek] Could not read flow {f.id} ({f.type}): {e!r}")
+            return {"id": self.ids[f.id], "kind": f.type, "method": f.type.upper(), "url": "", "host": "", "info": "could not be read",
+                    "time": f.timestamp_created, "status": None, "state": "error", "type": "", "size": 0, "ms": None,
+                    "error": f"tls-peek could not read this flow: {e}", "replay": False, "marked": bool(f.marked),
+                    "note": f.comment, "edited": [], "rules": 0, "ip": None, "tls": None, "ws": None, "held": None,
+                    "http": None, "phases": None}
 
     def detail(self, f):
         if f.type != "http":

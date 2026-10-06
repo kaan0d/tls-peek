@@ -158,6 +158,15 @@ peek.retry_rejected()
 assert not peek.rejected and addon.read_settings()["passthrough_hosts"] == []
 print("warnings ok")
 
+# A flow the summary code chokes on becomes an error row; the others still list.
+odd, fine = tflow.ttcpflow(), tflow.ttcpflow()
+odd.messages = None
+lister = addon.TlsPeek()
+lister.flows, lister.ids, lister.changed = [odd, fine], {odd.id: 0, fine.id: 1}, {odd.id: 1, fine.id: 1}
+rows = lister.changes(0)["flows"]
+assert rows[0]["state"] == "error" and "could not read" in rows[0]["error"] and rows[1]["method"] == "TCP", rows
+print("unreadable flow ok")
+
 
 # --- UI server ---
 class Echo(BaseHTTPRequestHandler):
