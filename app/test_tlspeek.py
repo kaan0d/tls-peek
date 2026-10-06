@@ -165,6 +165,8 @@ lister = addon.TlsPeek()
 lister.flows, lister.ids, lister.changed = [odd, fine], {odd.id: 0, fine.id: 1}, {odd.id: 1, fine.id: 1}
 rows = lister.changes(0)["flows"]
 assert rows[0]["state"] == "error" and "could not read" in rows[0]["error"] and rows[1]["method"] == "TCP", rows
+fine.messages[0].content = b"needle"
+assert lister.search("needle") == [1]
 print("unreadable flow ok")
 
 

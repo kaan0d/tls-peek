@@ -136,15 +136,15 @@ class TlsPeek:
         for h in logging.getLogger().handlers:
             h.addFilter(quiet_tls_crashes)
         if ctx.options.ui_port and not self.server:
+            settings = read_settings()
             try:
-                self.rules = [clean_rule(r) for r in read_settings().get("rewrite_rules", [])]
+                self.rules = [clean_rule(r) for r in settings.get("rewrite_rules", [])]
             except (ValueError, TypeError, AttributeError) as e:
                 print(f"[tls-peek] Ignoring rewrite rules in settings.json: {e}")
             if not ctx.options.ui_file:
-                for host in read_settings().get("passthrough_hosts", []):
+                for host in settings.get("passthrough_hosts", []):
                     self.rejected[host] = {"host": host, "count": 0, "reason": "saved", "last": 0}
             if not ctx.options.ui_file and ctx.options.mode[0].startswith("local"):
-                settings = read_settings()
                 self.last_program = settings.get("program", "")
                 self.apply("", settings.get("host_filter", ""))
             self.server = ThreadingHTTPServer(("127.0.0.1", ctx.options.ui_port), make_handler(self))
@@ -523,7 +523,13 @@ class TlsPeek:
             return (any(q in (body_text(m) or "").lower() for m in (f.request, f.response))
                     or (f.websocket and any(m.is_text and q in m.text.lower() for m in f.websocket.messages)))
 
-        return [self.ids[f.id] for f in list(self.flows) if hit(f)]
+        def safe_hit(f):
+            try:
+                return hit(f)
+            except Exception:  # an unreadable flow just does not match
+                return False
+
+        return [self.ids[f.id] for f in list(self.flows) if safe_hit(f)]
 
     def resend(self, ui_id, method, url, headers, body):
         """Sends an edited copy of a flow; the result shows up as a new row."""
@@ -584,6 +590,9 @@ def make_handler(addon):
                 self.get()
             except (ValueError, KeyError) as e:  # a malformed id or query
                 self.send(400, {"error": str(e)})
+            except Exception as e:  # e.g. a flow this code cannot read: answer instead of dropping the connection
+                print(f"[tls-peek] {self.path} failed: {e!r}")
+                self.send(500, {"error": f"tls-peek could not read this: {e}"})
 
         def get(self):
             if not self.headers.get("X-Tlspeek-Tray"):
