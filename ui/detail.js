@@ -29,6 +29,7 @@ export async function loadDetail() {
     const d = await api("/api/flow/" + id);
     if (id !== S.selected) return;
     S.current = d;
+    if (tab === "stream" && appendStream(d)) return;
   } catch (err) {
     S.current = null;
     $("#detail").innerHTML = `<div class="empty">${esc(err.message)}</div>`;
@@ -148,16 +149,27 @@ async function fillWire(id) {
     + part(w.request, "Request") + part(w.response, "Response");
 }
 
-// Hex dumps the user opened stay open while a live stream redraws.
-let openHex = new Set();
+const msgHtml = (m, n) => `<div class="msg ${m.from_client ? "out" : "in"}" data-n="${n}"><div class="meta">${m.from_client ? "→ sent" : "← received"} · ${new Date(m.time * 1000).toLocaleTimeString()} · ${fmtSize(m.size)}</div>
+    <pre>${esc(m.text ?? m.hex)}</pre>${m.text != null ? `<details class="hexd"><summary>Hex</summary><pre>${esc(m.hex)}</pre></details>` : ""}</div>`;
+const streamHead = (d) => `${d.raw_messages.length} messages${d.dropped_messages ? ` (the ${d.dropped_messages} oldest are not shown)` : ""}`;
 
 function streamHtml(d) {
   const msgs = d.raw_messages;
   if (!msgs.length) return `<div class="empty">No data yet.</div>`;
-  const key = (i) => `${d.summary.id}:${d.dropped_messages + i}`;
-  return `<h3>${msgs.length} messages${d.dropped_messages ? ` (the ${d.dropped_messages} oldest are not shown)` : ""}</h3>` + msgs.map((m, i) => `
-    <div class="msg ${m.from_client ? "out" : "in"}"><div class="meta">${m.from_client ? "→ sent" : "← received"} · ${new Date(m.time * 1000).toLocaleTimeString()} · ${fmtSize(m.size)}</div>
-    <pre>${esc(m.text ?? m.hex)}</pre>${m.text != null ? `<details class="hexd" data-key="${key(i)}"${openHex.has(key(i)) ? " open" : ""}><summary>Hex</summary><pre>${esc(m.hex)}</pre></details>` : ""}</div>`).join("");
+  return `<h3 id="stream-head">${streamHead(d)}</h3><div id="stream" data-id="${d.summary.id}">${msgs.map((m, i) => msgHtml(m, d.dropped_messages + i)).join("")}</div>`;
+}
+
+// A live stream only gains messages: add the new ones and drop the oldest instead of redrawing,
+// so open hex dumps, selected text and the scroll position stay.
+function appendStream(d) {
+  const box = $("#stream");
+  if (!box || box.dataset.id !== String(d.summary.id)) return false;
+  for (const el of [...box.children]) if (+el.dataset.n < d.dropped_messages) el.remove();
+  const shown = Math.max(d.dropped_messages, box.lastElementChild ? +box.lastElementChild.dataset.n + 1 : 0);
+  box.insertAdjacentHTML("beforeend", d.raw_messages.slice(shown - d.dropped_messages).map((m, i) => msgHtml(m, shown + i)).join(""));
+  $("#stream-head").textContent = streamHead(d);
+  document.querySelector('#detail .tab[data-tab="stream"]').textContent = `Messages ${d.summary.msgs}`;
+  return true;
 }
 
 function dnsHtml(d) {
@@ -190,7 +202,6 @@ function renderDetail() {
        ...(current.websocket ? [["messages", `Messages ${current.websocket.length}`]] : []), ["wire", "Raw"], ["connection", "Connection"]]
     : [s.kind === "dns" ? ["dns", "DNS"] : ["stream", `Messages ${s.msgs}`], ["connection", "Connection"]];
   if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
-  openHex = new Set([...document.querySelectorAll("#detail .hexd[open]")].map((el) => el.dataset.key));
   const body = tab === "request"
     ? (params.length ? `<h3>Query</h3><div class="headers">${kv(params)}</div>` : "") + messageHtml(current.request, false, "request")
     : tab === "response" ? messageHtml(current.response, s.state === "pending", "response")
