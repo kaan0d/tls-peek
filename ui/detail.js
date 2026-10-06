@@ -148,12 +148,16 @@ async function fillWire(id) {
     + part(w.request, "Request") + part(w.response, "Response");
 }
 
+// Hex dumps the user opened stay open while a live stream redraws.
+let openHex = new Set();
+
 function streamHtml(d) {
   const msgs = d.raw_messages;
   if (!msgs.length) return `<div class="empty">No data yet.</div>`;
-  return `<h3>${msgs.length} messages${d.dropped_messages ? ` (the ${d.dropped_messages} oldest are not shown)` : ""}</h3>` + msgs.map((m) => `
+  const key = (i) => `${d.summary.id}:${d.dropped_messages + i}`;
+  return `<h3>${msgs.length} messages${d.dropped_messages ? ` (the ${d.dropped_messages} oldest are not shown)` : ""}</h3>` + msgs.map((m, i) => `
     <div class="msg ${m.from_client ? "out" : "in"}"><div class="meta">${m.from_client ? "→ sent" : "← received"} · ${new Date(m.time * 1000).toLocaleTimeString()} · ${fmtSize(m.size)}</div>
-    <pre>${esc(m.text ?? m.hex)}</pre>${m.text != null ? `<details class="hexd"><summary>Hex</summary><pre>${esc(m.hex)}</pre></details>` : ""}</div>`).join("");
+    <pre>${esc(m.text ?? m.hex)}</pre>${m.text != null ? `<details class="hexd" data-key="${key(i)}"${openHex.has(key(i)) ? " open" : ""}><summary>Hex</summary><pre>${esc(m.hex)}</pre></details>` : ""}</div>`).join("");
 }
 
 function dnsHtml(d) {
@@ -186,6 +190,7 @@ function renderDetail() {
        ...(current.websocket ? [["messages", `Messages ${current.websocket.length}`]] : []), ["wire", "Raw"], ["connection", "Connection"]]
     : [s.kind === "dns" ? ["dns", "DNS"] : ["stream", `Messages ${s.msgs}`], ["connection", "Connection"]];
   if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
+  openHex = new Set([...document.querySelectorAll("#detail .hexd[open]")].map((el) => el.dataset.key));
   const body = tab === "request"
     ? (params.length ? `<h3>Query</h3><div class="headers">${kv(params)}</div>` : "") + messageHtml(current.request, false, "request")
     : tab === "response" ? messageHtml(current.response, s.state === "pending", "response")
