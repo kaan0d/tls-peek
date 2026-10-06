@@ -411,6 +411,51 @@ finally:
     proc.kill()
 print("raw flows ok")
 
+# --- every kind of flow goes through every view: one odd flow once broke the whole list ---
+https_lookup = tflow.tdnsflow(resp=True)
+https_lookup.response.answers.append(mdns.ResourceRecord("dns.google", mdns.types.HTTPS, mdns.classes.IN, 60,
+                                                         bytes.fromhex("00010000010003026832")))
+h2 = tflow.tflow(resp=True)
+h2.request.http_version = h2.response.http_version = "HTTP/2.0"
+streamed = tflow.tflow(resp=True)
+streamed.response.raw_content = None  # bodies over stream_large_bodies are not stored
+silent = tflow.ttcpflow()
+silent.messages = []  # a connection that never sent data
+variety = [
+    *tflow.tflows(), tflow.tflow(), tflow.tflow(err=True), tflow.tflow(resp=True, err=True), h2, streamed,
+    tflow.tflow(resp=tutils.tresp(content=bytes(range(256)), headers=[(b"content-type", b"application/octet-stream")])),
+    tflow.tflow(resp=tutils.tresp(content=b'{"a": [1, {"b": null}], "c": "eyJhbGciOiJub25lIn0.eyJ4IjoxfQ."}',
+                                  headers=[(b"content-type", b"application/json")])),
+    tflow.twebsocketflow(), tflow.twebsocketflow(err=tflow.terr(), close_code=1006),
+    tflow.ttcpflow(err=tflow.terr()), silent, tflow.tudpflow(err=tflow.terr()),
+    tflow.tdnsflow(), tflow.tdnsflow(err=True), https_lookup,
+]
+with open(tmp / "variety.mitm", "wb") as fo:
+    w = io.FlowWriter(fo)
+    for fl in variety:
+        w.add(fl)
+proc = start(file="variety.mitm")
+try:
+    for _ in range(50):
+        rows = call("/api/flows")[1]["flows"]
+        if len(rows) == len(variety):
+            break
+        time.sleep(0.2)
+    assert len(rows) == len(variety), rows
+    unread = [r for r in rows if "could not read" in (r["error"] or "")]
+    assert not unread, unread
+    for r in rows:
+        assert call(f"/api/flow/{r['id']}")[0] == 200, r
+        if r["kind"] == "http":
+            assert call(f"/api/raw/{r['id']}")[0] == 200, r
+    for path in ("/api/findings", "/api/endpoints", "/api/openapi?host=address", "/api/search?q=a"):
+        assert call(path)[0] == 200, path
+    for fmt in ("har", "postman"):
+        assert post("/api/export", {"format": fmt})[0] == 200, fmt
+finally:
+    proc.kill()
+print("every flow kind ok")
+
 # --- tray: its polling must not keep an unattended capture alive ---
 proc = start("--set", "ui_auto_stop=4")
 tray_req = lambda: urllib.request.urlopen(urllib.request.Request(
