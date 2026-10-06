@@ -84,7 +84,8 @@ def raw_fields(f):
         q = f.request.questions[0] if f.request.questions else None
         name = f"{q.name} {to_json_type(f.request)}" if q else "?"
         resp = f.response
-        answers = [a["data"] for a in resp.to_json()["answers"]] if resp else []
+        # HTTPS/SVCB answers carry a dict of parameters; the row shows just their type.
+        answers = [a["data"] if isinstance(a["data"], str) else a["type"] for a in resp.to_json()["answers"]] if resp else []
         info = f"{name}" + (f" → {', '.join(answers[:3])}" + (f" +{len(answers) - 3}" if len(answers) > 3 else "") if answers else "")
         return {"method": "DNS", "info": info, "url": f"dns://{name}", "host": q.name if q else host, "label": resp.to_json()["response_code"] if resp else None,
                 "state": "error" if f.error else "done" if resp else "pending",

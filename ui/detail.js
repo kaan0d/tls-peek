@@ -175,7 +175,7 @@ function appendStream(d) {
 function dnsHtml(d) {
   const q = d.query, r = d.response;
   const rows = (list) => list.length ? `<table class="stats"><thead><tr><th>Name</th><th>Type</th><th class="num">TTL</th><th>Data</th></tr></thead><tbody>
-    ${list.map((a) => `<tr><td class="mono">${esc(a.name)}</td><td>${esc(a.type)}</td><td class="num">${a.ttl ?? ""}</td><td class="mono">${esc(a.data ?? "")}</td></tr>`).join("")}</tbody></table>` : `<div class="headers"><i>none</i></div>`;
+    ${list.map((a) => `<tr><td class="mono">${esc(a.name)}</td><td>${esc(a.type)}</td><td class="num">${a.ttl ?? ""}</td><td class="mono">${esc(typeof a.data === "object" && a.data ? JSON.stringify(a.data) : a.data ?? "")}</td></tr>`).join("")}</tbody></table>` : `<div class="headers"><i>none</i></div>`;
   const flags = (m) => ["authoritative_answer", "truncation", "recursion_desired", "recursion_available"].filter((k) => m[k]).map((k) => k.replace(/_/g, " ")).join(", ");
   return `<h3>Question</h3><div class="headers">${kv(q.questions.map((x) => [x.type, x.name]))}${kv([["ID", String(q.id)], ["Flags", flags(q) || "none"]])}</div>
     ${r ? `<h3>Answer <small>${esc(r.response_code)}</small></h3>${rows(r.answers)}

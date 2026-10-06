@@ -13,7 +13,7 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from mitmproxy import io
+from mitmproxy import dns as mdns, io
 from mitmproxy.test import tflow, tutils
 
 import addon
@@ -382,7 +382,10 @@ print("export ok")
 # --- TCP, UDP and DNS flows are listed; HTTP has a raw view ---
 with open(tmp / "raw.mitm", "wb") as fo:
     w = io.FlowWriter(fo)
-    for fl in (tflow.ttcpflow(), tflow.tudpflow(), tflow.tdnsflow(resp=True), tflow.tflow(resp=True)):
+    lookup = tflow.tdnsflow(resp=True)  # browsers also ask for HTTPS records, whose data is a dict
+    lookup.response.answers.append(mdns.ResourceRecord("dns.google", mdns.types.HTTPS, mdns.classes.IN, 60,
+                                                       bytes.fromhex("00010000010003026832")))
+    for fl in (tflow.ttcpflow(), tflow.tudpflow(), lookup, tflow.tflow(resp=True)):
         w.add(fl)
 proc = start(file="raw.mitm")
 try:
@@ -393,7 +396,7 @@ try:
         time.sleep(0.2)
     tcp, udp, dns, web = flows
     assert [f["kind"] for f in flows] == ["tcp", "udp", "dns", "http"], flows
-    assert tcp["method"] == "TCP" and tcp["msgs"] == 2 and dns["info"] == "dns.google A → 8.8.8.8, 8.8.4.4", (tcp, dns)
+    assert tcp["method"] == "TCP" and tcp["msgs"] == 2 and dns["info"] == "dns.google A → 8.8.8.8, 8.8.4.4, HTTPS", (tcp, dns)
     d = call(f"/api/flow/{tcp['id']}")[1]
     assert d["raw_messages"][0]["text"] == "hello" and d["raw_messages"][0]["hex"].startswith("000000  68 65"), d
     assert d["connection"]["timing"]["send"] is None, d["connection"]  # the Connection tab needs a timing object
