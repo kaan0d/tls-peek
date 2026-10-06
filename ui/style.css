@@ -38,6 +38,9 @@ header h1 { font-size: 14px; margin: 0 8px 0 0; }
 #events button { padding: 2px 8px; }
 #ev-list { flex-basis: 100%; max-height: 140px; overflow: auto; margin: 2px 0 4px; padding: 0; list-style: none;
   font-family: var(--mono); font-size: 12px; }
+#ev-help { flex-basis: 100%; margin: 0 0 4px; }
+#ev-help p { margin: 4px 0; color: var(--muted); }
+#ev-help pre { margin: 0; overflow: auto; font-family: var(--mono); font-size: 12px; }
 #ev-list li { display: flex; gap: 12px; padding: 1px 0; }
 #ev-list li span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ev-list li span { color: var(--muted); }

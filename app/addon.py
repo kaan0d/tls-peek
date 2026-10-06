@@ -434,6 +434,7 @@ class TlsPeek:
             "rules": self.rules,
             "held": sum(1 for f in list(self.flows) if f.intercepted),
             "rejected": sorted(self.rejected.values(), key=lambda e: -e["last"]),
+            "ca_file": str(Path(ctx.options.confdir).expanduser() / "mitmproxy-ca-cert.pem"),  # public certificate only, never the key
         }
 
     def configure_capture(self, program, host_filter):

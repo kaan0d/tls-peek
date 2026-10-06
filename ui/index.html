@@ -60,6 +60,10 @@
   <button id="ev-toggle" type="button" aria-expanded="false">Show</button>
   <button id="ev-close" type="button" aria-label="Dismiss" title="Dismiss until a new host fails">×</button>
   <ul id="ev-list" hidden></ul>
+  <details id="ev-help"><summary>Program keeps its own certificate list?</summary>
+    <p>Node.js, Python, Java, Git and Firefox can ignore the Windows certificate store. Point them to the capture
+      certificate, then start the program again from the same window. The file is new for every capture.</p>
+    <pre id="ev-cmds"></pre></details>
 </div>
 <main>
   <section id="list" aria-label="Requests">

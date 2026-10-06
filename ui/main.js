@@ -41,6 +41,16 @@ export function showState(s) {
   $("#pause").setAttribute("aria-pressed", paused);
   const n = s.rejected.length;
   $("#events").hidden = n === 0 || n <= dismissedAt;
+  const f = s.ca_file, cmds = [
+    `Node.js   set NODE_EXTRA_CA_CERTS=${f}`,
+    `Python    set SSL_CERT_FILE=${f}`,
+    `          set REQUESTS_CA_BUNDLE=${f}`,
+    `          (replaces the bundled list: hosts outside the capture fail until you unset them)`,
+    `Git       git config --global http.sslBackend schannel`,
+    `Java      keytool -importcert -cacerts -storepass changeit -noprompt -alias tls-peek -file "${f}"`,
+    `          (undo: keytool -delete -cacerts -storepass changeit -alias tls-peek)`,
+    `Firefox   about:config: security.enterprise_roots.enabled = true`].join("\n");
+  if ($("#ev-cmds").textContent !== cmds) $("#ev-cmds").textContent = cmds;
   $("#ev-count").textContent = n === 1 ? "1 host" : n + " hosts";
   $("#ev-list").innerHTML = s.rejected.map((e) => `<li><span>${esc(e.host)}</span>
     <span>${e.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${e.count}</span>
