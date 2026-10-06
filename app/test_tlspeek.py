@@ -393,6 +393,7 @@ try:
     assert tcp["method"] == "TCP" and tcp["msgs"] == 2 and dns["info"] == "dns.google A → 8.8.8.8, 8.8.4.4", (tcp, dns)
     d = call(f"/api/flow/{tcp['id']}")[1]
     assert d["raw_messages"][0]["text"] == "hello" and d["raw_messages"][0]["hex"].startswith("000000  68 65"), d
+    assert d["connection"]["timing"]["send"] is None, d["connection"]  # the Connection tab needs a timing object
     assert call(f"/api/flow/{dns['id']}")[1]["dns"]["response"]["answers"][0]["data"] == "8.8.8.8"
     assert call("/api/search?q=hello")[1] == [tcp["id"], udp["id"]]
     wire = call(f"/api/raw/{web['id']}")[1]

@@ -15,15 +15,20 @@ def address(addr):
 
 
 def timing(f, opened_here):
-    """Phases in ms. connect and tls only for the flow that opened the server connection."""
-    req, resp, sc = f.request, f.response, f.server_conn
-    return {
+    """Phases in ms. connect and tls only for the flow that opened the server connection;
+    send, wait and receive only for HTTP."""
+    sc = f.server_conn
+    t = {
         "connect": ms(sc.timestamp_start, sc.timestamp_tcp_setup) if opened_here else None,
         "tls": ms(sc.timestamp_tcp_setup, sc.timestamp_tls_setup) if opened_here else None,
-        "send": ms(req.timestamp_start, req.timestamp_end),
-        "wait": ms(req.timestamp_end, resp.timestamp_start) if resp else None,
-        "receive": ms(resp.timestamp_start, resp.timestamp_end) if resp else None,
+        "send": None, "wait": None, "receive": None,
     }
+    if f.type == "http":
+        req, resp = f.request, f.response
+        t.update(send=ms(req.timestamp_start, req.timestamp_end),
+                 wait=ms(req.timestamp_end, resp.timestamp_start) if resp else None,
+                 receive=ms(resp.timestamp_start, resp.timestamp_end) if resp else None)
+    return t
 
 
 def cert_info(c):
@@ -61,7 +66,7 @@ def connection(f, opened_here):
                   certs=[cert_info(c) for c in f.server_conn.certificate_list])
     http = f.type == "http"
     return {"client": side(f.client_conn), "server": server, "http": f.request.http_version if http else f.type.upper(),
-            "timing": timing(f, opened_here) if http else None}
+            "timing": timing(f, opened_here)}
 
 
 # --- non-HTTP flows (TCP, UDP, DNS) and HTTP as on the wire ---
