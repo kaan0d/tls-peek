@@ -1,5 +1,5 @@
 // Entry point: header controls, polling, program picker, stop and the cert warning bar.
-import { $, S, api, esc, post } from "./core.js";
+import { $, S, api, esc, post, refusal } from "./core.js";
 import { render } from "./list.js";
 import { refreshDetail } from "./detail.js";
 import { showIntercept } from "./intercept.js";
@@ -53,7 +53,7 @@ export function showState(s) {
   if ($("#ev-cmds").textContent !== cmds) $("#ev-cmds").textContent = cmds;
   $("#ev-count").textContent = n === 1 ? "1 host" : n + " hosts";
   $("#ev-list").innerHTML = s.rejected.map((e) => `<li><span>${esc(e.host)}</span>
-    <span>${e.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${e.count}</span>
+    <span>${refusal(e)}</span>
     <span>${e.passed ? `passed through ×${e.passed}` : ""}</span></li>`).join("");
   return s;
 }

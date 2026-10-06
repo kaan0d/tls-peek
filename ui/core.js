@@ -2,6 +2,9 @@
 export const $ = (s) => document.querySelector(s);
 export const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 export const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
+// Why a host is not decrypted, for the warning bar and the Stats host table.
+export const refusal = (e) => e.reason === "saved" ? "refused in an earlier capture"
+  : `${e.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${e.count}`;
 export const fmtMs = (ms) => ms == null ? "" : ms < 1000 ? ms + " ms" : (ms / 1000).toFixed(1) + " s";
 export const PHASES = [["connect", "TCP connect"], ["tls", "TLS handshake"], ["send", "Request sent"],
   ["wait", "Waiting (TTFB)"], ["receive", "Download"]];

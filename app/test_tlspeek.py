@@ -153,6 +153,9 @@ hellos = {sni: SimpleNamespace(client_hello=SimpleNamespace(sni=sni), ignore_con
 for h in hellos.values():
     peek.tls_clienthello(h)
 assert [h.ignore_connection for h in hellos.values()] == [True, False, False] and peek.rejected["a.com"]["passed"] == 1
+assert addon.read_settings()["passthrough_hosts"] == ["a.com", "b.com"]
+peek.retry_rejected()
+assert not peek.rejected and addon.read_settings()["passthrough_hosts"] == []
 print("warnings ok")
 
 

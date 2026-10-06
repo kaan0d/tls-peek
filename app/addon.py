@@ -140,6 +140,9 @@ class TlsPeek:
                 self.rules = [clean_rule(r) for r in read_settings().get("rewrite_rules", [])]
             except (ValueError, TypeError, AttributeError) as e:
                 print(f"[tls-peek] Ignoring rewrite rules in settings.json: {e}")
+            if not ctx.options.ui_file:
+                for host in read_settings().get("passthrough_hosts", []):
+                    self.rejected[host] = {"host": host, "count": 0, "reason": "saved", "last": 0}
             if not ctx.options.ui_file and ctx.options.mode[0].startswith("local"):
                 settings = read_settings()
                 self.last_program = settings.get("program", "")
@@ -188,10 +191,20 @@ class TlsPeek:
         entry["last"] = time.time()
         if reason == "rejected":
             entry["reason"] = reason
+        if data.conn.sni and entry["count"] == 1:
+            self.save_passthrough()
+
+    def save_passthrough(self):
+        save_settings(passthrough_hosts=sorted(h for h in self.rejected if h != "unknown host"))
+
+    def retry_rejected(self):
+        self.rejected.clear()
+        self.save_passthrough()
 
     def tls_clienthello(self, data):
         # A host that refused our certificate is passed through undecrypted, so the program keeps
-        # working; its first connection has already failed. "Try again" in the UI clears the list.
+        # working; only its first connection ever fails, since the list is saved for later captures.
+        # "Try again" in the UI clears it.
         entry = self.rejected.get(data.client_hello.sni)
         if entry:
             data.ignore_connection = True
@@ -436,7 +449,8 @@ class TlsPeek:
             "intercept": self.icpt,
             "rules": self.rules,
             "held": sum(1 for f in list(self.flows) if f.intercepted),
-            "rejected": sorted(self.rejected.values(), key=lambda e: -e["last"]),
+            # Hosts saved by an earlier capture show up once this capture passes them through.
+            "rejected": sorted((e for e in self.rejected.values() if e["count"] or e.get("passed")), key=lambda e: -e["last"]),
             "ca_file": str(Path(ctx.options.confdir).expanduser() / "mitmproxy-ca-cert.pem"),  # public certificate only, never the key
         }
 
@@ -668,7 +682,7 @@ def make_handler(addon):
                     addon.on_loop(lambda: addon.set_paused(bool(body.get("paused"))))
                     return self.send(200, addon.state())
                 if self.path == "/api/retry-rejected":
-                    addon.on_loop(addon.rejected.clear)
+                    addon.on_loop(addon.retry_rejected)
                     return self.send(200, addon.state())
                 if self.path == "/api/mark":
                     addon.mark(int(body["id"]), body.get("marked"), body.get("note"))
