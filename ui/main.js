@@ -43,7 +43,8 @@ export function showState(s) {
   $("#events").hidden = n === 0 || n <= dismissedAt;
   $("#ev-count").textContent = n === 1 ? "1 host" : n + " hosts";
   $("#ev-list").innerHTML = s.rejected.map((e) => `<li><span>${esc(e.host)}</span>
-    <span>${e.reason === "rejected" ? "certificate rejected" : "closed during handshake"}</span><span>×${e.count}</span></li>`).join("");
+    <span>${e.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${e.count}</span>
+    <span>${e.passed ? `passed through ×${e.passed}` : ""}</span></li>`).join("");
   return s;
 }
 
@@ -113,6 +114,10 @@ $("#ev-toggle").addEventListener("click", (e) => {
   $("#ev-list").hidden = !open;
   e.target.textContent = open ? "Hide" : "Show";
   e.target.setAttribute("aria-expanded", open);
+});
+$("#ev-retry").addEventListener("click", async () => {
+  dismissedAt = 0;
+  try { showState(await post("/api/retry-rejected", {})); } catch {}
 });
 $("#ev-close").addEventListener("click", () => {
   dismissedAt = $("#ev-list").children.length;

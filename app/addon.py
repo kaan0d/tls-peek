@@ -2,7 +2,8 @@
 
 Serves the web UI (ui folder) on 127.0.0.1 when ui_port > 0: pick the program,
 set the host filter, inspect, search, filter and resend traffic. Warns when the
-monitored program rejects the mitmproxy certificate (pinning).
+monitored program rejects the mitmproxy certificate (pinning); later connections
+to that host pass through undecrypted so the program keeps working.
 
 With redact=true it masks credentials in every flow (used for HAR export).
 """
@@ -184,6 +185,14 @@ class TlsPeek:
         entry["last"] = time.time()
         if reason == "rejected":
             entry["reason"] = reason
+
+    def tls_clienthello(self, data):
+        # A host that refused our certificate is passed through undecrypted, so the program keeps
+        # working; its first connection has already failed. "Try again" in the UI clears the list.
+        entry = self.rejected.get(data.client_hello.sni)
+        if entry:
+            data.ignore_connection = True
+            entry["passed"] = entry.get("passed", 0) + 1
 
     # --- flow tracking (event loop thread) ---
 
@@ -653,6 +662,9 @@ def make_handler(addon):
                     if ctx.options.ui_file:
                         raise ValueError("viewing a saved session")
                     addon.on_loop(lambda: addon.set_paused(bool(body.get("paused"))))
+                    return self.send(200, addon.state())
+                if self.path == "/api/retry-rejected":
+                    addon.on_loop(addon.rejected.clear)
                     return self.send(200, addon.state())
                 if self.path == "/api/mark":
                     addon.mark(int(body["id"]), body.get("marked"), body.get("note"))

@@ -54,8 +54,9 @@
   </div>
 </div>
 <div id="events" role="status" hidden>
-  <span class="text">⚠ <b id="ev-count"></b> did not accept the capture certificate, so their traffic is not decrypted.
-    <small>Pinned, or the app was running before the capture started: restart it.</small></span>
+  <span class="text">⚠ <b id="ev-count"></b> did not accept the capture certificate. Their later connections pass through undecrypted, so the app keeps working.
+    <small>Pinned, or the app was running before the capture started: restart it, then Try again.</small></span>
+  <button id="ev-retry" type="button" title="Decrypt these hosts again">Try again</button>
   <button id="ev-toggle" type="button" aria-expanded="false">Show</button>
   <button id="ev-close" type="button" aria-label="Dismiss" title="Dismiss until a new host fails">×</button>
   <ul id="ev-list" hidden></ul>

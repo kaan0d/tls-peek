@@ -149,6 +149,10 @@ for sni, err in [("a.com", "The client does not trust the proxy's certificate fo
     peek.tls_failed_client(SimpleNamespace(conn=SimpleNamespace(sni=sni, error=err)))
 assert peek.rejected["a.com"]["count"] == 2 and peek.rejected["a.com"]["reason"] == "rejected"
 assert peek.rejected["b.com"]["reason"] == "closed" and "c.com" not in peek.rejected
+hellos = {sni: SimpleNamespace(client_hello=SimpleNamespace(sni=sni), ignore_connection=False) for sni in ["a.com", "d.com", None]}
+for h in hellos.values():
+    peek.tls_clienthello(h)
+assert [h.ignore_connection for h in hellos.values()] == [True, False, False] and peek.rejected["a.com"]["passed"] == 1
 print("warnings ok")
 
 

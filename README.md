@@ -81,7 +81,7 @@ on real proxied calls: the caller waits, gets an edited request and a faked resp
 and rewrite rules (replace, header, fixed response) on the same calls.
 
 ## Limits
-- **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. The UI lists these hosts in one collapsible bar.
+- **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. Their first connection fails; later ones pass through undecrypted so the app keeps working. The UI lists these hosts in one collapsible bar, and Try again decrypts them again.
 - **Auto-stop needs an open tab.** A tab the browser puts to sleep (Edge sleeping tabs) counts as closed after `auto_stop_seconds`.
 - **Bodies over 5 MB** are streamed through and not stored or shown.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.

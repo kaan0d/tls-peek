@@ -45,7 +45,7 @@ export function renderStats() {
       <td class="mono" title="${esc([...h.ips].join(", "))}">${esc([...h.ips][0] || "")}${h.ips.size > 1 ? ` +${h.ips.size - 1}` : ""}</td>
       <td>${esc([...h.tls].join(", "))}</td><td>${esc([...h.http].join(", "))}</td></tr>`).join("")}
     ${S.rejected.filter((r) => !hosts.has(r.host)).map((r) => `<tr class="rejected" title="No traffic decrypted: the program refused the capture certificate">
-      <td>${esc(r.host)}</td><td colspan="7" class="err">${r.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${r.count} (pinned, or started before the capture)</td></tr>`).join("")}</tbody></table>`;
+      <td>${esc(r.host)}</td><td colspan="7" class="err">${r.reason === "rejected" ? "certificate rejected" : "closed during handshake"} ×${r.count} (pinned, or started before the capture); passed through undecrypted</td></tr>`).join("")}</tbody></table>`;
   $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;
