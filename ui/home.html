@@ -45,7 +45,7 @@ td.actions > * { margin-left: 4px; }
 <main>
   <header>
     <h1>tls-peek</h1>
-    <p class="lede">See the HTTPS requests one Windows program sends.</p>
+    <p class="lede">See the HTTPS requests one Windows program sends. <span id="version"></span></p>
   </header>
 
   <div id="notice" role="status" hidden></div>
@@ -133,6 +133,7 @@ function render(s) {
                   : "A capture certificate is still trusted (left from a crash).")
     : "No capture certificate is trusted." + (s.ca_folder ? " A leftover CA folder exists." : "");
   $("#open-folder").title = s.folder;
+  $("#version").textContent = s.version;
   $("#cleanup").disabled = capRunning || (!s.ca_trusted && !s.ca_folder);
   if (s.message && !waitingFor) notice(s.message);
 }

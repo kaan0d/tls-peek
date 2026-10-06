@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer
 
 import addon
 from addon import CAPTURES, CONFDIR
+from version import VERSION
 from web import UI_DIR, LocalHandler
 from win import (NO_BROWSER, ca_trusted, exited, fail, flag, free_port, is_up, owns_console, port_free,
                  relaunch_as_admin, self_command, show_console, start_tray, tray_available)
@@ -48,7 +49,7 @@ class Home:
             c = self.child
             child = {"kind": c["kind"], "port": c["port"], "file": c.get("file", ""), "up": is_up(c["port"])}
         return {"child": child, "sessions": self.sessions(), "ca_trusted": ca_trusted(),
-                "ca_folder": CONFDIR.exists(), "folder": str(CAPTURES), "message": self.message}
+                "ca_folder": CONFDIR.exists(), "folder": str(CAPTURES), "version": VERSION, "message": self.message}
 
     def session_path(self, name):
         """A file in captures\\ by bare name; rejects anything that points elsewhere."""

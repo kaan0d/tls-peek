@@ -19,6 +19,7 @@ import time
 import addon
 from addon import CAPTURES, CONFDIR
 from home import run_home
+from version import VERSION
 from win import (ELEVATED, exited, fail, flag, free_port, is_admin, open_when_up, owns_console, port_free,
                  relaunch_as_admin, show_console, start_tray, stop_with_parent, tray_available)
 
@@ -161,6 +162,9 @@ def open_session(path):
 
 
 def main():
+    if "--version" in sys.argv:
+        print(f"tls-peek {VERSION}")
+        return
     stop_with_parent()
     flags_with_value = {"--parent", "--port", "--home-port"}
     args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in flags_with_value]

@@ -59,13 +59,14 @@ tlspeek.cmd  /  tlspeek.exe          start page
 tlspeek.exe capture                  start a capture right away
 tlspeek.exe open [FILE.mitm]         view a saved session (or drop the file on the exe)
 tlspeek.exe cleanup                  untrust and delete the CA after a crash
+tlspeek.exe --version                print the release
 python app\tlspeek.py ...            same commands without the exe
 ```
 
 Data folder: `%LOCALAPPDATA%\tls-peek` for the exe (never synced, survives moving the exe), the repo folder for `tlspeek.cmd`. It holds `captures\`, the CA while a capture runs, and
 `settings.json` (created on first use): `program` (last used), `host_filter` (plain domain; a value with `\` is a regex),
 `ui_port` (default 8081), `auto_stop_seconds` (default 300, 0 = never stop on its own),
-`keep_days` (older captures are deleted, 0 = keep all).
+`keep_days` (default 7: older captures are deleted, 0 = keep all).
 
 ## Verification
 ```
@@ -99,6 +100,7 @@ app\
   bootstrap.ps1        installs Python and the Python packages if missing, runs tlspeek.py
   tlspeek.py           command line: capture / open / cleanup, CA handling, HAR on exit
   home.py              start page server
+  version.py           release name, written by CI from the git tag
   win.py               flags, ports, UAC relaunch, console window, tray icon
   addon.py             mitmproxy addon: UI server, flow tracking, intercept, decoders
   export.py            credential masking, HAR and Postman export
