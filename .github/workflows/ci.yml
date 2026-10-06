@@ -17,6 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: UI scripts parse
+        shell: bash
+        run: for f in ui/*.js; do node --input-type=module --check < "$f" || exit 1; done
       - run: pip install mitmproxy pystray pillow pyinstaller
       - run: python app\test_tlspeek.py
         timeout-minutes: 10
