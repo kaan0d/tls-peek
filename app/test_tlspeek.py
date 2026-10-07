@@ -27,14 +27,16 @@ tmp = pathlib.Path(tempfile.mkdtemp())
 # The tests change settings.json (it is not in git); put the user's copy back at the end.
 settings_file = root / "settings.json"
 settings_before = settings_file.read_bytes() if settings_file.exists() else None
+saved_before = addon.SAVED.read_bytes() if addon.SAVED.exists() else None  # saved requests, same story
 
 
 @atexit.register
 def restore_settings():
-    if settings_before is None:
-        settings_file.unlink(missing_ok=True)
-    else:
-        settings_file.write_bytes(settings_before)
+    for path, before in ((settings_file, settings_before), (addon.SAVED, saved_before)):
+        if before is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(before)
 
 
 # --- field-name matching ---
@@ -256,6 +258,34 @@ try:
             break
         time.sleep(0.2)
     assert resent["summary"]["replay"] and resent["response"]["body"] == "echo:hello", resent
+    assert resent["summary"]["source"] == done["id"], "a resent request must point back to its original"
+
+    def answered(res):
+        for _ in range(50):
+            d = call(f"/api/flow/{res['id']}")[1]
+            if d["summary"]["state"] != "pending":
+                return d
+            time.sleep(0.2)
+        return d
+
+    # Duplicate: only an id, everything else as captured.
+    status, res = post("/api/resend", {"id": res["id"]})
+    dup = answered(res)
+    assert status == 200 and dup["response"]["body"] == "echo:hello" and dup["summary"]["method"] == "POST", dup
+
+    # A new request, not copied from any flow.
+    echo_url = f"http://127.0.0.1:{echo.server_address[1]}/new"
+    status, res = post("/api/resend", {"method": "POST", "url": echo_url, "headers": [["x-a", "1"]], "body": "fresh"})
+    new = answered(res)
+    assert status == 200 and new["response"]["body"] == "echo:fresh" and new["summary"]["source"] is None, new
+    assert ["x-a", "1"] in new["request"]["headers"], new["request"]["headers"]
+    assert post("/api/resend", {"url": echo_url})[0] == 400, "a new request needs a method"
+
+    # Saved requests live in captures\saved-requests.json.
+    item = {"name": "login", "method": "POST", "url": echo_url, "headers": [["x-a", "1"]], "body": "b"}
+    assert post("/api/saved", {"items": [item]}) == (200, [item])
+    assert call("/api/saved")[1] == [item] and json.loads(addon.SAVED.read_text("utf-8")) == [item]
+    assert post("/api/saved", {"items": [{"name": "no url"}]})[0] == 400
 finally:
     srv.kill()
     echo.shutdown()

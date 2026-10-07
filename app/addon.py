@@ -20,7 +20,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from mitmproxy import contentviews, ctx, http
+from mitmproxy import connection, contentviews, ctx, http
 from OpenSSL import SSL
 
 import apimap
@@ -37,6 +37,7 @@ APP_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS = APP_DIR / "settings.json"
 CONFDIR = APP_DIR / ".mitmproxy"
 CAPTURES = APP_DIR / "captures"
+SAVED = CAPTURES / "saved-requests.json"  # requests the user saved to send again later
 MAX_FLOWS = 5000  # ponytail: oldest flows drop from the UI past this; the .mitm file keeps all
 MAX_BODY = 200_000
 MAX_WS_MESSAGES = 1000
@@ -383,6 +384,7 @@ class TlsPeek:
             "note": f.comment,
             "edited": f.metadata.get("tlspeek_edited", []),
             "rules": f.metadata.get("tlspeek_rules", 0),
+            "source": self.ids.get(f.metadata.get("tlspeek_source")),  # UI id of the flow this one resent
             "ip": f.server_conn.peername[0] if f.server_conn.peername else None,
             "tls": f.server_conn.tls_version,
         }
@@ -531,20 +533,34 @@ class TlsPeek:
 
         return [self.ids[f.id] for f in list(self.flows) if safe_hit(f)]
 
-    def resend(self, ui_id, method, url, headers, body):
-        """Sends an edited copy of a flow; the result shows up as a new row."""
-        src = self.get(ui_id)
-        if src is None or src.type != "http":
+    def resend(self, ui_id, method=None, url=None, headers=None, body=None):
+        """Sends a copy of a flow, or a new request when ui_id is None; the result shows up as a
+        new row. Parts left as None stay as they were, so a binary body is sent on unchanged."""
+        src = None if ui_id is None else self.get(ui_id)
+        if ui_id is not None and (src is None or src.type != "http"):
             raise ValueError("flow gone" if src is None else "only HTTP requests can be resent")
+        if src is None and not (method and url):
+            raise ValueError("a new request needs a method and a URL")
 
         def go():
-            f = src.copy()
-            f.request.method = method
-            f.request.url = url
-            f.request.headers.clear()
-            for k, v in headers:
-                f.request.headers.add(k, v)
-            f.request.text = body
+            if src is None:  # same as mitmproxy's view.flows.create
+                req = http.Request.make(method.upper(), url)
+                f = http.HTTPFlow(connection.Client(peername=("", 0), sockname=("", 0), timestamp_start=req.timestamp_start),
+                                  connection.Server(address=(req.host, req.port)))
+                f.request = req
+            else:
+                f = src.copy()
+                f.metadata["tlspeek_source"] = src.id
+                if method:
+                    f.request.method = method
+                if url:
+                    f.request.url = url
+            if headers is not None:
+                f.request.headers.clear()
+                for k, v in headers:
+                    f.request.headers.add(k, v)
+            if body is not None:
+                f.request.text = body
             f.response = f.error = f.websocket = None
             ctx.master.commands.call("replay.client", [f])
             self.touch(f, force=True)  # show it as pending right away, even when paused
@@ -631,6 +647,8 @@ def make_handler(addon):
                 if f is None or f.type != "http":
                     return self.send(404, {"error": "no HTTP request with this id"})
                 self.send(200, observe.wire(f))
+            elif url.path == "/api/saved":
+                self.send(200, json.loads(SAVED.read_text("utf-8")) if SAVED.exists() else [])
             elif url.path == "/api/endpoints":
                 self.send(200, apimap.endpoints(list(addon.flows), dict(addon.ids)))
             elif url.path == "/api/openapi":
@@ -714,9 +732,16 @@ def make_handler(addon):
                     name = f'tlspeek-{time.strftime("%Y%m%d-%H%M%S")}' + (".postman_collection.json" if fmt == "postman" else ".har")
                     return self.send(200, data, headers=[("Content-Disposition", f'attachment; filename="{name}"')])
                 if self.path == "/api/resend":
-                    new_id = addon.resend(int(body["id"]), body["method"], body["url"],
-                                          body.get("headers", []), body.get("body", ""))
+                    new_id = addon.resend(None if body.get("id") is None else int(body["id"]), body.get("method"),
+                                          body.get("url"), body.get("headers"), body.get("body"))
                     return self.send(200, {"id": new_id})
+                if self.path == "/api/saved":
+                    items = [{"name": str(r.get("name", "")), "method": str(r["method"]), "url": str(r["url"]),
+                              "headers": [[str(k), str(v)] for k, v in r.get("headers", [])], "body": str(r.get("body", ""))}
+                             for r in body.get("items", [])]
+                    CAPTURES.mkdir(exist_ok=True)
+                    SAVED.write_text(json.dumps(items, indent=2), "utf-8")
+                    return self.send(200, items)
                 self.send(404, {"error": "not found"})
             except Exception as e:
                 self.send(400, {"error": str(e)})
