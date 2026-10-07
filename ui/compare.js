@@ -32,8 +32,8 @@ function diffHtml(a, b) {
 const headerText = (msg) => msg ? msg.headers.map(([k, v]) => `${k}: ${v}`).sort().join("\n") : "";
 const bodyText = (msg) => msg ? prettyBody(msg) : "";
 
-$("#compare-btn").addEventListener("click", async () => {
-  const [a, b] = await Promise.all([...picked].map((id) => api("/api/flow/" + id)));
+export async function compareFlows(idA, idB) {
+  const [a, b] = await Promise.all([idA, idB].map((id) => api("/api/flow/" + id)));
   const line = (d) => `${d.summary.method} ${d.summary.url} → ${d.summary.status ?? d.summary.state}`;
   $("#compare-body").innerHTML = `
     <p class="legend"><span class="ddel">- A</span> ${esc(line(a))}<br><span class="dadd">+ B</span> ${esc(line(b))}</p>
@@ -44,5 +44,6 @@ $("#compare-btn").addEventListener("click", async () => {
     <h3>Response headers</h3>${diffHtml(headerText(a.response), headerText(b.response))}
     <h3>Response body</h3>${diffHtml(bodyText(a.response), bodyText(b.response))}`;
   $("#compare").showModal();
-});
+}
+$("#compare-btn").addEventListener("click", () => compareFlows(...picked));
 $("#compare-close").addEventListener("click", () => $("#compare").close());

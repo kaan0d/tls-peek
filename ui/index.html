@@ -29,6 +29,7 @@
   <button id="release-all" type="button" hidden>Continue all</button>
   <span id="status" class="status">Connecting…</span>
   <span class="spacer"></span>
+  <button id="compose-btn" type="button" title="Write a new request, paste a cURL command, or send a saved request">Requests…</button>
   <button id="api-btn" type="button" title="Endpoints grouped from the captured requests, with an OpenAPI download">API map</button>
   <button id="findings-btn" type="button" title="Passive security checks on the captured traffic">Findings</button>
   <button id="stats-btn" type="button" title="Counts, sizes and timings for the requests shown">Stats</button>
@@ -152,22 +153,40 @@
   <div id="compare-body"></div>
 </dialog>
 
-<dialog id="resend" aria-label="Edit and resend">
+<dialog id="resend" aria-labelledby="rs-title">
   <form method="dialog">
+    <b id="rs-title">Edit and resend</b>
+    <details id="rs-curl-box"><summary>Paste cURL</summary>
+      <textarea id="rs-curl" rows="4" aria-label="cURL command" placeholder="curl 'https://api.example.com/x' -H 'Accept: application/json' (bash or cmd form)"></textarea>
+      <div class="actions"><button type="button" id="rs-curl-go">Fill in</button></div>
+    </details>
     <div class="row">
       <input id="rs-method" aria-label="Method" style="flex: 0 0 90px">
-      <input id="rs-url" aria-label="URL">
+      <input id="rs-url" aria-label="URL" placeholder="https://api.example.com/path">
     </div>
     <label for="rs-headers">Headers (one "Name: value" per line)</label>
     <textarea id="rs-headers" rows="8"></textarea>
     <label for="rs-body">Body</label>
     <textarea id="rs-body" rows="8"></textarea>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="rs-save"> Save to captures for later use</label>
+      <input id="rs-name" aria-label="Name of the saved request" placeholder="Name (optional)" hidden>
+    </div>
     <div class="actions">
       <span id="resend-error"></span>
       <button type="button" id="rs-cancel">Cancel</button>
-      <button type="button" id="rs-send" class="primary">Resend</button>
+      <button type="button" id="rs-save-only" hidden>Save without sending</button>
+      <button type="button" id="rs-send" class="primary">Send</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="saved-dlg" aria-labelledby="saved-title">
+  <div class="top"><b id="saved-title" style="flex: 1">Saved requests</b>
+    <button id="saved-new" type="button" class="primary">New request</button>
+    <button id="saved-close" type="button">Close</button></div>
+  <p class="hint">Saved in <code>captures\saved-requests.json</code>, with their tokens and cookies as written: keep that folder private.</p>
+  <div id="saved-list"></div>
 </dialog>
 
 </body>

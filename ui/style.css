@@ -240,6 +240,16 @@ dialog .top input[type=search] { flex: 1; }
 #resend .row input { flex: 1; font-family: var(--mono); }
 #resend .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 #resend-error { color: var(--bad); margin-right: auto; }
+#resend .row label { color: var(--muted); }
+#rs-curl-box { display: grid; gap: 6px; }
+#rs-curl-box summary { cursor: pointer; color: var(--muted); }
+#saved-dlg { width: min(760px, calc(100vw - 32px)); }
+#saved-dlg .hint { margin: 8px 12px; }
+#saved-list { display: grid; max-height: 60vh; overflow: auto; }
+#saved-list .item { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
+#saved-list .item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+#saved-list .item b { font-family: inherit; margin-right: 6px; }
+#saved-list .empty { padding: 16px; }
 
 @media (max-width: 800px) {
   main.has-detail { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }

@@ -219,7 +219,7 @@ export function render() {
     status: (f) => `<td class="c-status">${statusCell(f)}</td>`,
     host: (f) => `<td title="${esc(f.host)}">${esc(f.host)}</td>`,
     path: (f) => {
-      const tags = (f.replay ? `<span class="tag">resent</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
+      const tags = (f.replay ? `<span class="tag">${f.source != null ? "resent" : "sent"}</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
         + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "")
         + (f.edited.length ? `<span class="tag" title="Edited while held: ${f.edited.join(", ")}">edited</span>` : "")
         + (f.rules ? `<span class="tag" title="Changed by ${f.rules === 1 ? "a rewrite rule" : f.rules + " rewrite rules"}">rule</span>` : "");

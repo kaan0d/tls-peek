@@ -1,8 +1,10 @@
-// Detail panel: request/response/messages tabs, body decoders, notes, copy as, edit and resend.
-import { $, PHASES, S, api, esc, fmtMs, fmtSize, header, headerLines, kv, parseHeaders, post, prettyBody } from "./core.js";
+// Detail panel: request/response/messages tabs, body decoders, notes, copy as, edit and resend, duplicate.
+import { $, PHASES, S, api, esc, fmtMs, fmtSize, header, headerLines, kv, post, prettyBody } from "./core.js";
+import { compareFlows } from "./compare.js";
+import { openEditor, send } from "./compose.js";
 import { holdHtml, wireHold } from "./intercept.js";
 import { openRules } from "./rules.js";
-import { render, showAllStatuses, visible } from "./list.js";
+import { render, visible } from "./list.js";
 
 let tab = "request";
 
@@ -214,13 +216,18 @@ function renderDetail() {
     <div class="bar" role="tablist">
       ${tabs.map(([k, label]) => `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}">${esc(label)}</button>`).join("")}
       <span class="spacer"></span>
+      ${http && s.source != null ? `<button id="orig-btn" type="button" title="Diff this request and its response against the one it was resent from">Compare with original</button>` : ""}
       ${http ? `<button id="resend-btn" type="button" ${current.websocket ? "disabled title='WebSocket flows cannot be resent'" : ""}>Edit &amp; resend</button>
+      <button id="dup-btn" type="button" ${current.websocket ? "disabled title='WebSocket flows cannot be resent'" : "title='Send this request again unchanged'"}>Duplicate</button>
       ${S.file || current.websocket ? "" : `<button id="rule-btn" type="button" title="New rewrite rule for this URL and method">New rule…</button>`}
       <details class="copy"><summary>Copy ▾</summary><div class="menu">
         <button type="button" data-copy="url">URL</button>
         <button type="button" data-copy="curl">cURL</button>
         <button type="button" data-copy="ps">PowerShell</button>
         <button type="button" data-copy="py">Python requests</button>
+        <button type="button" data-copy="fetch">JavaScript fetch</button>
+        <button type="button" data-copy="httpie">HTTPie</button>
+        <button type="button" data-copy="raw">Raw request</button>
       </div></details>` : ""}
       <button id="close-detail" type="button" title="Close (Esc)">Close</button>
     </div>
@@ -237,7 +244,10 @@ function renderDetail() {
     if (tab === "stream") loadDetail(); else renderDetail();  // messages are not refreshed while another tab is shown
   }));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
-  $("#resend-btn")?.addEventListener("click", openResend);
+  $("#resend-btn")?.addEventListener("click", () => openEditor({ id: s.id, method: s.method, url: s.url,
+    headers: headerLines(current.request), body: current.request.body, keepBody: !current.request.editable }));
+  $("#dup-btn")?.addEventListener("click", (e) => send({ id: s.id }).catch((err) => { e.target.textContent = "Failed"; e.target.title = err.message; }));
+  $("#orig-btn")?.addEventListener("click", () => compareFlows(s.source, s.id));
   if (tab === "wire") fillWire(s.id);
   $("#rule-btn")?.addEventListener("click", () => openRules(current));
   if (s.state === "held") wireHold(s);
@@ -277,34 +287,26 @@ const COPY = {
       (hs.length ? `    headers={\n${hs.map(([k, v]) => `        ${pyq(k)}: ${pyq(v)},`).join("\n")}\n    },\n` : "") +
       (r.body ? `    data=${pyq(r.body)},\n` : "") + `)\nprint(response.status_code, response.text)\n`;
   },
+  fetch: (s, r) => {  // browsers drop Cookie and other forbidden headers; Node 18+ sends them
+    const hs = r.headers.filter(([k]) => !skipHeader(k));
+    return `const response = await fetch(${pyq(s.url)}, {\n  method: ${pyq(s.method)},\n` +
+      (hs.length ? `  headers: {\n${hs.map(([k, v]) => `    ${pyq(k)}: ${pyq(v)},`).join("\n")}\n  },\n` : "") +
+      (r.body ? `  body: ${pyq(r.body)},\n` : "") + `});\nconsole.log(response.status, await response.text());\n`;
+  },
+  httpie: (s, r) => ["http", s.method, sq(s.url),
+    ...r.headers.filter(([k]) => !skipHeader(k)).map(([k, v]) => sq(v ? `${k}:${v}` : `${k};`)),
+    ...(r.body ? ["--raw", sq(r.body)] : [])].join(" "),
+  raw: async (s) => {
+    const w = await api(`/api/raw/${s.id}`);
+    return w.request.head + w.request.body;
+  },
 };
 
 async function copy(kind, btn) {
-  await navigator.clipboard.writeText(COPY[kind](S.current.summary, S.current.request));
+  await navigator.clipboard.writeText(await COPY[kind](S.current.summary, S.current.request));
   const old = btn.textContent; btn.textContent = "Copied";
   setTimeout(() => { btn.textContent = old; btn.closest("details")?.removeAttribute("open"); }, 900);
 }
-
-// --- edit and resend ---
-function openResend() {
-  const s = S.current.summary, r = S.current.request;
-  $("#rs-method").value = s.method;
-  $("#rs-url").value = s.url;
-  $("#rs-headers").value = headerLines(r);
-  $("#rs-body").value = r.body;
-  $("#resend-error").textContent = "";
-  $("#resend").showModal();
-}
-$("#rs-cancel").addEventListener("click", () => $("#resend").close());
-$("#rs-send").addEventListener("click", async () => {
-  try {
-    const { id } = await post("/api/resend", { id: S.current.summary.id, method: $("#rs-method").value.trim(),
-      url: $("#rs-url").value.trim(), headers: parseHeaders($("#rs-headers").value), body: $("#rs-body").value });
-    $("#resend").close();
-    showAllStatuses();
-    select(id);
-  } catch (err) { $("#resend-error").textContent = err.message; }
-});
 
 // Esc closes the panel; arrow keys move through the shown requests.
 document.addEventListener("keydown", (e) => {

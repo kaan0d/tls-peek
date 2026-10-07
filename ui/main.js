@@ -6,6 +6,7 @@ import { showIntercept } from "./intercept.js";
 import { showRules } from "./rules.js";
 import "./stats.js";
 import "./compare.js";
+import "./compose.js";
 import "./export.js";
 
 let program = "";

@@ -20,7 +20,8 @@ administrator rights.
 - **Decoders:** JWTs found in headers, URL or body; Base64; mitmproxy's views (protobuf, gRPC, msgpack, hex, ...).
 - **Intercept:** hold requests and/or responses matching a URL and method, edit them, then continue or drop; the program gets the edited version. Clicking Intercept again turns it off and sends held traffic on unchanged.
 - **Rewrite rules:** set or remove a header, find and replace in URL or body, or answer with a fixed response, automatically and without holding. **New rule…** on a request starts one for its URL with the captured response. Rules are saved for the next capture.
-- **Work with requests:** bookmarks and notes, edit and resend, compare two as a diff, copy as cURL/PowerShell/Python.
+- **Work with requests:** bookmarks and notes, edit and resend, duplicate, compare two as a diff (or a resend with its original), copy as cURL/PowerShell/Python/fetch/HTTPie or as the raw request.
+- **Send requests:** **Requests…** writes a new request or fills one from a pasted cURL command (bash or cmd form). Ticking **Save to captures** keeps it in `captures\saved-requests.json`, where the same menu sends it again or edits it first.
 - **API map:** requests grouped into endpoints (`/users/123` and `/users/octocat` become `/users/{id}` and `/users/{name}`) with calls, statuses, median time and JSON shapes; OpenAPI 3 download per host.
 - **Findings:** passive checks on captured traffic: credentials in URLs, plain HTTP, Basic auth, JWTs with alg none, no expiry or accepted after expiry, CORS with credentials, cookie flags, old TLS, expired certificates, missing HSTS, version headers.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table with IP, TLS and HTTP version, plus hosts that refused the certificate.
@@ -72,6 +73,7 @@ Data folder: `%LOCALAPPDATA%\tls-peek` for the exe (never synced, survives movin
 ## Verification
 ```
 python app\test_tlspeek.py
+node app\test_curl.mjs
 ```
 Covers field-name matching and redacted HAR export, findings, endpoint grouping and OpenAPI output, then
 runs the UI server and checks connection and timing data, TCP/UDP/DNS flows and the raw HTTP view,
@@ -81,7 +83,8 @@ notes surviving in the session file, decoders and sandboxed previews, HAR and Po
 export, that tray polling does not keep an unattended capture alive, that a capture stops
 with its starter, the start page (sessions, path checks, open and close, exit), and intercept
 on real proxied calls: the caller waits, gets an edited request and a faked response, drops, and release-all,
-and rewrite rules (replace, header, fixed response) on the same calls.
+rewrite rules (replace, header, fixed response) on the same calls, and duplicate, new and saved requests.
+`test_curl.mjs` checks the cURL paste parser.
 
 ## Limits
 - **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. Their first connection fails; later ones, also in later captures, pass through undecrypted so the app keeps working. The UI lists these hosts in one collapsible bar, and Try again decrypts them again.
@@ -90,6 +93,7 @@ and rewrite rules (replace, header, fixed response) on the same calls.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
 - **Redaction is by field name** (auth, token, password, key, user, code, ...), plus JWTs and
   bearer tokens anywhere. Other free-text personal data is not masked. Check exports before you share them.
+- **Saved requests keep their tokens and cookies** as written, in plain text. Keep `captures\` private.
 - **WebSocket, TCP, UDP and DNS flows** can be viewed but not resent, intercepted or rewritten. Only the last 1000 WebSocket and 200 TCP or UDP messages are shown.
 - **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.
 
@@ -110,6 +114,7 @@ app\
   apimap.py            endpoint grouping, JSON shapes, OpenAPI export
   web.py               request handler base for both local servers
   test_tlspeek.py      redaction and UI API checks
+  test_curl.mjs        cURL paste parser checks
 ui\
   home.html            start page
   index.html           capture UI, with style.css and one ES module per panel
