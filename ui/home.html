@@ -86,6 +86,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
 let status = null;
 let waitingFor = null;  // "capture" | "viewer" while we wait to move into it
+let armed = null;       // session whose Delete was clicked once; kept here so polling does not reset it
+let armTimer;
 
 async function call(path, data) {
   const opts = data === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
@@ -124,7 +126,7 @@ function render(s) {
     <td class="actions">
       <button type="button" data-open="${esc(x.name)}" ${child ? "disabled" : ""}>Open</button>
       ${x.har ? `<a class="button" href="/api/file?name=${encodeURIComponent(x.name.replace(/\.mitm$/, ".har"))}" title="Redacted HAR">HAR</a>` : ""}
-      <button type="button" class="danger" data-delete="${esc(x.name)}">Delete</button>
+      <button type="button" class="danger${armed === x.name ? " confirm" : ""}" data-delete="${esc(x.name)}">${armed === x.name ? "Click to delete" : "Delete"}</button>
     </td></tr>`).join("");
   const capRunning = child?.kind === "capture";
   $("#ca-text").className = "dot " + (s.ca_trusted ? "warn" : "ok");
@@ -165,11 +167,14 @@ $("#sessions").addEventListener("click", async (e) => {
       notice("Opening the session…");
       render(await call("/api/open", { name: open.dataset.open }));
     } else if (del) {
-      if (!del.classList.contains("confirm")) {  // two clicks, so a stray click keeps the file
-        del.classList.add("confirm"); del.textContent = "Click to delete";
-        setTimeout(() => { del.classList.remove("confirm"); del.textContent = "Delete"; }, 3000);
+      clearTimeout(armTimer);
+      if (armed !== del.dataset.delete) {  // two clicks, so a stray click keeps the file
+        armed = del.dataset.delete;
+        armTimer = setTimeout(() => { armed = null; render(status); }, 3000);
+        render(status);
         return;
       }
+      armed = null;
       render(await call("/api/delete", { name: del.dataset.delete }));
     }
   } catch (err) { waitingFor = null; notice(err.message, true); }
