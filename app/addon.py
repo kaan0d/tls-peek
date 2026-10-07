@@ -371,8 +371,14 @@ class TlsPeek:
         return self.opened_by.get(f.server_conn.id) == f.id
 
     def get(self, ui_id):
+        """The flow with this UI id, or None. The UI thread calls this while touch() may be dropping
+        the oldest flow; a lookup that lands on a neighbour in that moment counts as gone."""
         i = ui_id - self.dropped
-        return self.flows[i] if 0 <= i < len(self.flows) else None
+        try:
+            f = self.flows[i] if i >= 0 else None
+        except IndexError:
+            return None
+        return f if f is not None and self.ids.get(f.id) == ui_id else None
 
     def summary(self, f):
         base = {
@@ -419,6 +425,7 @@ class TlsPeek:
     # --- called from the UI thread ---
 
     def on_loop(self, fn):
+        # After the timeout the UI gets an error, but fn still runs once the loop is free.
         async def run():
             return fn()
         return asyncio.run_coroutine_threadsafe(run(), self.loop).result(timeout=10)
@@ -464,8 +471,10 @@ class TlsPeek:
         save_settings(program=self.last_program, host_filter=self.host_text)
 
     def changes(self, since):
+        # seq first: a change that lands while the list is built is sent again next time, never lost.
+        seq = self.seq
         flows = [f for f in list(self.flows) if self.changed.get(f.id, 0) > since]
-        return {"seq": self.seq, "dropped": self.dropped, "flows": [self.safe_summary(f) for f in flows]}
+        return {"seq": seq, "dropped": self.dropped, "flows": [self.safe_summary(f) for f in flows]}
 
     def safe_summary(self, f):
         """One flow this code cannot read must not empty the whole list: it shows as an error row."""

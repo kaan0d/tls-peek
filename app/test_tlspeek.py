@@ -171,6 +171,23 @@ fine.messages[0].content = b"needle"
 assert lister.search("needle") == [1]
 print("unreadable flow ok")
 
+# The event loop changes flows while the UI thread lists them.
+class TouchDuringList(dict):  # a touch() on the first flow lands after it was checked
+    def get(self, key, default=None):
+        if key == fine.id and lister.seq == 1:
+            lister.seq = self[odd.id] = 2
+        return super().get(key, default)
+
+
+lister.seq, lister.changed = 1, TouchDuringList({odd.id: 0, fine.id: 0})
+assert lister.changes(0)["seq"] == 1, "a change made while listing must not be skipped"
+assert [r["id"] for r in lister.changes(1)["flows"]] == [0]
+lister.flows.pop(0); lister.ids.pop(odd.id)  # touch() dropping the oldest flow, before dropped += 1
+assert lister.get(0) is None and lister.get(1) is None, "a lookup mid-drop must not return a neighbour"
+lister.dropped = 1
+assert lister.get(1) is fine and lister.get(0) is None
+print("ui thread races ok")
+
 
 # --- UI server ---
 class Echo(BaseHTTPRequestHandler):
