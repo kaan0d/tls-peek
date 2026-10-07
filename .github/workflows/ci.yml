@@ -22,6 +22,7 @@ jobs:
       - name: UI scripts parse
         shell: bash
         run: for f in ui/*.js; do node --input-type=module --check < "$f" || exit 1; done
+      - run: node app/test_curl.mjs
       - run: pip install mitmproxy pystray pillow pyinstaller
       - run: python app\test_tlspeek.py
         timeout-minutes: 10
