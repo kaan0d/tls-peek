@@ -28,6 +28,8 @@ def template(path):
     out, params = [], []
     for seg in path.split("?")[0].split("/"):
         name = next((n for rx, n in SEGMENTS if rx.fullmatch(seg)), None)
+        if name == "token" and len(parts := re.split(r"[-_]", seg)) >= 3 and max(map(len, parts)) <= 10:
+            name = None  # a slug such as app-config-settings-v2-final is a name, not a token
         if name:
             name = unique(name, params)
             params.append(name)
@@ -59,7 +61,7 @@ def shape(value, depth=0):
 
 
 def merge(a, b):
-    """One schema covering both: object keys are united, arrays merge their items, null makes a field nullable."""
+    """One schema covering both: object keys are united, arrays merge their items, null makes a field nullable, other type clashes become oneOf."""
     if not a:
         return b
     if not b or a == b:
@@ -68,6 +70,16 @@ def merge(a, b):
         return {**a, "nullable": True}
     if a.keys() == {"nullable"}:
         return {**b, "nullable": True}
+    if "oneOf" in a or "oneOf" in b:
+        variants = list(a.get("oneOf", [a]))
+        for v in b.get("oneOf", [b]):
+            for i, w in enumerate(variants):
+                if w.get("type") == v.get("type"):
+                    variants[i] = merge(w, v)
+                    break
+            else:
+                variants.append(v)
+        return {"oneOf": variants}
     if a.get("type") == b.get("type") == "object":
         props = dict(a["properties"])
         for k, v in b["properties"].items():
@@ -77,7 +89,7 @@ def merge(a, b):
         return {**a, "items": merge(a["items"], b["items"])}
     if {a.get("type"), b.get("type")} == {"integer", "number"}:
         return {**a, "type": "number"}
-    return a  # different types: keep the first one seen
+    return {"oneOf": [a, b]}  # different types (an array of 1, 2 and an object): keep every one seen
 
 
 def json_shape(msg):

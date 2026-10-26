@@ -531,7 +531,9 @@ class TlsPeek:
                 return any(q in m.content.decode("utf-8", "replace").lower() for m in f.messages)
             if f.type != "http":
                 return False
-            return (any(q in (body_text(m) or "").lower() for m in (f.request, f.response))
+            return (q in f.request.url.lower()
+                    or any(q in f"{k}: {v}".lower() for m in (f.request, f.response) if m for k, v in m.headers.items(multi=True))
+                    or any(q in (body_text(m) or "").lower() for m in (f.request, f.response))
                     or (f.websocket and any(m.is_text and q in m.text.lower() for m in f.websocket.messages)))
 
         def safe_hit(f):

@@ -155,6 +155,9 @@ print("findings ok")
 import apimap
 
 assert apimap.template("/v1/users/123/posts/9f86d081884c7d659a2feaa0c55ad015?x=1") == ("/v1/users/{id}/posts/{hash}", ["id", "hash"])
+assert apimap.template("/api/app-config-settings-v2-final")[0] == "/api/app-config-settings-v2-final"  # a slug is not a token
+mixed = apimap.merge(apimap.shape([1, 2, {"x": None}]), apimap.shape([3]))
+assert mixed["items"] == {"oneOf": [{"type": "integer"}, {"type": "object", "properties": {"x": {"nullable": True}}}]}, mixed
 assert apimap.template("/a/1/b/2/c/3")[0] == "/a/{id}/b/{id2}/c/{id3}" and apimap.template("/")[0] == "/"
 named = [tflow.tflow(req=tutils.treq(path=f"/users/{n}".encode()),
                     resp=tutils.tresp(headers=[(b"content-type", b"application/json")], content=b'{"login": "x", "id": 1}'))
@@ -215,6 +218,10 @@ rows = lister.changes(0)["flows"]
 assert rows[0]["state"] == "error" and "could not read" in rows[0]["error"] and rows[1]["method"] == "TCP", rows
 fine.messages[0].content = b"needle"
 assert lister.search("needle") == [1]
+hdr = tflow.tflow(req=tutils.treq(path=b"/p?trace=URLNEEDLE"), resp=tutils.tresp(headers=[(b"set-cookie", b"sid=HDRNEEDLE")]))
+finder = addon.TlsPeek()
+finder.flows, finder.ids = [hdr], {hdr.id: 0}
+assert finder.search("urlneedle") == [0] and finder.search("hdrneedle") == [0], "search covers URL and headers"
 print("unreadable flow ok")
 
 # The event loop changes flows while the UI thread lists them.

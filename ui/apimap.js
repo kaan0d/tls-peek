@@ -9,6 +9,7 @@ const key = (e) => `${e.host} ${e.method} ${e.path}`;
 
 // JSON Schema as a short type sketch: { name: string, tags: string[] }
 function sketch(s, pad = "") {
+  if (s?.oneOf) return s.oneOf.map((v) => sketch(v, pad)).join(" | ");
   if (!s || !s.type) return s?.nullable ? "null" : "unknown";
   const t = s.type === "object"
     ? (Object.keys(s.properties).length ? `{\n${Object.entries(s.properties).map(([k, v]) => `${pad}  ${k}: ${sketch(v, pad + "  ")}`).join(",\n")}\n${pad}}` : "{}")
