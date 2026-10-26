@@ -51,6 +51,7 @@ await page.waitForFunction(() => [...document.querySelectorAll(".finding:not(.di
 await page.click(".tile[data-sev=high]");
 await page.click("#stats-btn");  // the host table scrolls inside its box instead of running off the panel
 await page.waitForSelector(".scroll-x");
+await page.waitForSelector("h3:has-text('Who received data')");
 if (await page.$eval("#detail", (d) => d.scrollWidth > d.clientWidth + 1)) throw new Error("stats panel overflows sideways");
 await page.click("#export");  // the export says what it masked
 await page.click("#ex-go");

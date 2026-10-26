@@ -1,12 +1,36 @@
 // Stats panel for the requests currently shown.
-import { $, S, esc, fmtMs, fmtSize, kv, refusal } from "./core.js";
+import { $, S, api, esc, fmtMs, fmtSize, kv, refusal } from "./core.js";
 import { closeDetail } from "./detail.js";
 import { TYPES, filter, render, typeOf, visible } from "./list.js";
 
 const quantile = (xs, p) => xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))] : null;
 const show = (v) => v == null ? "–" : fmtMs(Math.round(v));
 
+// Domains and rate limits come from the server (all captured requests, not just those shown).
+let hostData = null, hostSeq = -1;
+function loadHosts() {
+  if (hostSeq === S.seq) return;
+  hostSeq = S.seq;
+  api("/api/hosts").then((d) => { hostData = d; if (S.panel === "stats") renderStats(); }).catch(() => {});
+}
+
+function domainsHtml() {
+  if (!hostData) return "";
+  const { domains, rate_limits: limits } = hostData;
+  const list = (xs) => xs.length ? esc(xs.slice(0, 4).join(", ")) + (xs.length > 4 ? ` +${xs.length - 4}` : "") : `<span class="muted">–</span>`;
+  const rows = domains.map((d) => `<tr><td>${esc(d.domain)}${d.hosts.length > 1 ? ` <span class="muted" title="${esc(d.hosts.join(", "))}">${d.hosts.length} hosts</span>` : ""}</td>
+    <td>${d.category ? `<span class="tag">${esc(d.category)}</span>` : ""}</td><td class="num">${d.requests}</td><td class="num">${fmtSize(d.sent)}</td>
+    <td class="mono">${list(d.identifiers)}</td><td>${list(d.personal)}</td><td class="mono" title="${esc(d.cookies.join(", "))}">${d.cookies.length ? d.cookies.length : "–"}</td></tr>`).join("");
+  return `<h3>Who received data <small>all captured requests, grouped by domain; categories are hints from a short built-in list</small></h3>
+    <div class="scroll-x"><table class="stats"><thead><tr><th>Domain</th><th>Category</th><th class="num">Requests</th><th class="num">Sent</th>
+    <th>Identifiers sent</th><th>Personal data</th><th class="num">Cookies set</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${limits.length ? `<h3>Rate limits</h3><div class="scroll-x"><table class="stats"><thead><tr><th>Host</th><th class="num">429 answers</th><th>Retry-After</th><th class="num">Lowest remaining</th></tr></thead>
+    <tbody>${limits.map((x) => `<tr><td>${esc(x.host)}</td><td class="num ${x.limited ? "err" : ""}">${x.limited}</td><td class="mono">${list(x.retry_after)}</td>
+      <td class="num">${x.remaining ?? "–"}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+}
+
 export function renderStats() {
+  loadHosts();
   const list = visible();
   const done = list.filter((f) => f.ms != null).map((f) => f.ms).sort((a, b) => a - b);
   const pct = (p) => done.length ? fmtMs(done[Math.min(done.length - 1, Math.floor(p * done.length))]) : "–";
@@ -49,7 +73,7 @@ export function renderStats() {
       <td class="mono" title="${esc([...h.ips].join(", "))}">${esc([...h.ips][0] || "")}${h.ips.size > 1 ? ` +${h.ips.size - 1}` : ""}</td>
       <td>${esc([...h.tls].join(", "))}</td><td>${esc([...h.http].join(", "))}</td></tr>`).join("")}
     ${S.rejected.filter((r) => !hosts.has(r.host)).map((r) => `<tr class="rejected" title="No traffic decrypted: the program refused the capture certificate">
-      <td>${esc(r.host)}</td><td colspan="9" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${esc(r.host)}</td><td colspan="9" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table></div>${domainsHtml()}`;
   $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;

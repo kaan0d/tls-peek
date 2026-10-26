@@ -25,6 +25,7 @@ from OpenSSL import SSL
 
 import apimap
 import findings
+import hosts
 import observe
 from export import body_text, make_har, make_postman, redact
 from web import UI_DIR, LocalHandler
@@ -733,6 +734,8 @@ def make_handler(addon):
                 self.send(200, json.loads(SAVED.read_text("utf-8")) if SAVED.exists() else [])
             elif url.path == "/api/endpoints":
                 self.send(200, apimap.endpoints(list(addon.flows), dict(addon.ids)))
+            elif url.path == "/api/hosts":
+                self.send(200, hosts.hosts(list(addon.flows), dict(addon.ids)))
             elif url.path == "/api/openapi":
                 host = q["host"][0]
                 spec = apimap.openapi(apimap.endpoints(list(addon.flows), dict(addon.ids)), host)

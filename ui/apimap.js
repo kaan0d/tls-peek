@@ -31,6 +31,11 @@ export async function renderApiMap() {
   const statuses = (e) => Object.entries(e.statuses).map(([c, n]) => `<span class="s${c[0]}">${c}</span>${n > 1 ? `×${n}` : ""}`).join(" ");
   const details = (e) => `<tr class="ep-detail"><td colspan="5">
     ${e.params.length ? `<div class="muted">Path parameters: <span class="mono">${e.params.map(esc).join(", ")}</span></div>` : ""}
+    ${e.paging?.length ? `<div class="muted">Pages by: <span class="mono">${e.paging.map(esc).join(", ")}</span></div>` : ""}
+    ${e.oauth && Object.keys(e.oauth).length ? `<div class="muted">OAuth: <span class="mono">${esc([
+      e.oauth.flow, e.oauth.pkce ? "PKCE" : (e.oauth.flow === "code" ? "no PKCE" : ""), e.oauth.state ? "state sent" : (e.oauth.flow === "code" ? "no state" : ""),
+      e.oauth.scope && "scope " + e.oauth.scope, e.oauth.answers && "answers " + e.oauth.answers.join("/"),
+      e.oauth.expires_in && "expires in " + e.oauth.expires_in + " s"].filter(Boolean).join(" · "))}</span></div>` : ""}
     ${e.query.length ? `<div class="muted">Query: <span class="mono">${e.query.map(esc).join(", ")}</span></div>` : ""}
     ${e.last_error ? `<div class="muted">Last failure: <button type="button" data-id="${e.last_error.id}">#${e.last_error.id}</button>
       <span class="s${String(e.last_error.status)[0]}">${e.last_error.status}</span> <span class="mono">${esc(e.last_error.text)}</span></div>` : ""}

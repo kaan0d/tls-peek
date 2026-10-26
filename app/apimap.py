@@ -3,6 +3,7 @@ and an OpenAPI 3 skeleton of one host's endpoints."""
 import json
 import re
 from statistics import median
+from urllib.parse import parse_qsl
 
 from export import body_text
 
@@ -13,6 +14,13 @@ SEGMENTS = [  # (pattern, placeholder) for path segments that vary between calls
     (re.compile(r"(?=.*\d)(?=.*[A-Za-z])[\w-]{20,}"), "token"),
     (re.compile(r"\d{4}-\d{2}-\d{2}"), "date"),
 ]
+PAGE_QUERY = {"page": "page number", "page_number": "page number", "pagenumber": "page number", "offset": "offset", "skip": "offset",
+              "start": "offset", "cursor": "cursor", "after": "cursor", "before": "cursor", "page_token": "cursor", "pagetoken": "cursor",
+              "starting_after": "cursor", "ending_before": "cursor"}
+PAGE_BODY = {"next", "next_cursor", "nextcursor", "next_page", "nextpage", "next_page_token", "nextpagetoken", "has_more", "hasmore",
+             "cursor", "end_cursor", "endcursor", "page_info", "pageinfo", "pagination", "total_pages", "totalpages"}
+OAUTH_REQUEST = ("grant_type", "response_type", "client_id", "redirect_uri", "scope", "state", "code_challenge", "code_challenge_method")
+OAUTH_RESPONSE = ("access_token", "refresh_token", "id_token", "expires_in", "token_type", "scope")
 MAX_SAMPLES = 20       # bodies per endpoint used for the JSON shapes
 MAX_BODY = 200_000
 
@@ -101,6 +109,38 @@ def json_shape(msg):
         return None
 
 
+def note_oauth(g, r, resp):
+    """OAuth 2 traffic: what the request asks for (flow, PKCE, state) and what the token answer carries."""
+    seen = {k: v for k, v in list(r.query.items(multi=True)) + form_pairs(r) if k in OAUTH_REQUEST}
+    if resp:
+        try:
+            body = json.loads(body_text(resp) or "") if "json" in resp.headers.get("content-type", "") else {}
+        except ValueError:
+            body = {}
+        if isinstance(body, dict):
+            keys = [k for k in OAUTH_RESPONSE if k in body]
+            if keys and ("access_token" in keys or "id_token" in keys):
+                g["oauth"]["answers"] = sorted(set(g["oauth"].get("answers", [])) | set(keys))
+                if isinstance(body.get("expires_in"), (int, float)):
+                    g["oauth"]["expires_in"] = body["expires_in"]
+            for k in PAGE_BODY & {x.lower() for x in body}:
+                if "cursor in body" not in g["paging"]:
+                    g["paging"].append("cursor in body")
+    if seen:
+        o = g["oauth"]
+        o["flow"] = seen.get("grant_type") or seen.get("response_type") or o.get("flow", "")
+        o["pkce"] = o.get("pkce", False) or "code_challenge" in seen
+        o["state"] = o.get("state", False) or "state" in seen
+        if "scope" in seen:
+            o["scope"] = seen["scope"]
+
+
+def form_pairs(r):
+    if "x-www-form-urlencoded" not in r.headers.get("content-type", ""):
+        return []
+    return list(parse_qsl(body_text(r) or ""))
+
+
 def endpoints(flows, ids):
     groups = {}
     for f in flows:
@@ -110,12 +150,19 @@ def endpoints(flows, ids):
         path, params = template(r.path)
         g = groups.setdefault((r.pretty_host, r.method, path), {
             "host": r.pretty_host, "method": r.method, "path": path, "params": params, "scheme": r.scheme,
-            "ids": [], "statuses": {}, "ms": [], "query": [], "request": {}, "responses": {}, "samples": 0, "last_error": None})
+            "ids": [], "statuses": {}, "ms": [], "query": [], "request": {}, "responses": {}, "samples": 0, "last_error": None,
+            "paging": [], "oauth": {}})
         g["ids"].append(ids[f.id])
         for k in r.query.keys():
             if k not in g["query"]:
                 g["query"].append(k)
         resp = f.response
+        for k in r.query.keys():
+            if k.lower() in PAGE_QUERY and PAGE_QUERY[k.lower()] not in g["paging"]:
+                g["paging"].append(PAGE_QUERY[k.lower()])
+        note_oauth(g, r, resp)
+        if resp and 'rel="next"' in resp.headers.get("link", "") and "Link header" not in g["paging"]:
+            g["paging"].append("Link header")
         if resp:
             g["statuses"][resp.status_code] = g["statuses"].get(resp.status_code, 0) + 1
             if resp.status_code >= 400:  # the newest failure, with what the server said about it
@@ -163,6 +210,7 @@ def merge_named(groups):
                 params.append(name)
                 segs.append("{" + name + "}")
         g = {**members[0], "path": "/".join(segs), "params": params, "ids": [], "statuses": {}, "ms": [], "query": [],
+             "paging": sorted({p for m in members for p in m["paging"]}), "oauth": next((m["oauth"] for m in members if m["oauth"]), {}),
              "last_error": max((m["last_error"] for m in members if m["last_error"]), key=lambda e: e["id"], default=None)}
         for m in members:
             g["ids"] += m["ids"]

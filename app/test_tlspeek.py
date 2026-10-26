@@ -214,6 +214,15 @@ assert apimap.template("/v1/users/123/posts/9f86d081884c7d659a2feaa0c55ad015?x=1
 assert apimap.template("/api/app-config-settings-v2-final")[0] == "/api/app-config-settings-v2-final"  # a slug is not a token
 bad = tflow.tflow(req=tutils.treq(path=b"/boom"), resp=tutils.tresp(status_code=500, content=b"db is down"))
 assert apimap.endpoints([bad], {bad.id: 7})[0]["last_error"] == {"id": 7, "status": 500, "text": "db is down"}
+pg = [tflow.tflow(req=tutils.treq(path=b"/items?page=%d" % n), resp=tutils.tresp(headers=[(b"content-type", b"application/json"),
+      (b"link", b'<https://x/items?page=2>; rel="next"')], content=b'{"next_cursor": "c1", "items": []}')) for n in (1, 2)]
+ep = apimap.endpoints(pg, {c.id: i for i, c in enumerate(pg)})[0]
+assert ep["paging"] == ["page number", "cursor in body", "Link header"], ep["paging"]
+tok = tflow.tflow(req=tutils.treq(method=b"POST", path=b"/oauth/token", headers=[(b"content-type", b"application/x-www-form-urlencoded")],
+                                  content=b"grant_type=authorization_code&code_challenge=abc&client_id=c"),
+                  resp=tutils.tresp(headers=[(b"content-type", b"application/json")], content=b'{"access_token": "T", "expires_in": 3600, "refresh_token": "R"}'))
+assert apimap.endpoints([tok], {tok.id: 0})[0]["oauth"] == {"answers": ["access_token", "expires_in", "refresh_token"], "expires_in": 3600,
+                                                              "flow": "authorization_code", "pkce": True, "state": False}, apimap.endpoints([tok], {tok.id: 0})[0]["oauth"]
 mixed = apimap.merge(apimap.shape([1, 2, {"x": None}]), apimap.shape([3]))
 assert mixed["items"] == {"oneOf": [{"type": "integer"}, {"type": "object", "properties": {"x": {"nullable": True}}}]}, mixed
 assert apimap.template("/a/1/b/2/c/3")[0] == "/a/{id}/b/{id2}/c/{id3}" and apimap.template("/")[0] == "/"
@@ -236,6 +245,13 @@ spec = apimap.openapi(eps, "address")
 op = spec["paths"]["/users/{id}"]["get"]
 assert op["parameters"][0] == {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
 assert op["responses"]["200"]["content"]["application/json"]["schema"]["type"] == "object"
+import hosts
+assert hosts.registrable("api.example.co.uk") == "example.co.uk" and hosts.registrable("10.0.0.1") == "10.0.0.1"
+tr = [tflow.tflow(req=tutils.treq(host=b"a.google-analytics.com", path=b"/c?cid=1&email=x%40y.co"), resp=tutils.tresp(status_code=429, headers=[(b"retry-after", b"9"), (b"x-ratelimit-remaining", b"0")]))]
+got = hosts.hosts(tr, {tr[0].id: 0})
+assert got["domains"][0]["domain"] == "google-analytics.com" and got["domains"][0]["category"] == "analytics", got
+assert got["domains"][0]["identifiers"] == ["cid"] and got["domains"][0]["personal"] == ["email"], got
+assert got["rate_limits"][0]["limited"] == 1 and got["rate_limits"][0]["retry_after"] == ["9"] and got["rate_limits"][0]["remaining"] == 0, got
 print("api map ok")
 
 # --- console noise and certificate warnings ---
