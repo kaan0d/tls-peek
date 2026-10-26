@@ -30,10 +30,12 @@ administrator rights.
 - **CA hygiene:** fresh CA per session, untrusted and deleted on stop, on window close and at the next start.
 
 ## Setup
-Download `tlspeek.exe` from [Releases](https://github.com/kaan0d/tls-peek/releases/latest) and run it: no Python needed. To check the download, compare
-`certutil -hashfile tlspeek.exe SHA256` with the line in `SHA256SUMS` from the same release.
+Download from [Releases](https://github.com/kaan0d/tls-peek/releases/latest), no Python needed. Two builds of the same program:
+- `tlspeek.exe`: one file. It unpacks itself to `%TEMP%` on every start.
+- `tlspeek-windows.zip`: a folder. Unzip anywhere and run `tlspeek	lspeek.exe`. Use it when antivirus flags the single exe (it does not unpack at start). Both builds keep their data in the same folder, see Usage.
 
-Antivirus flags the exe? It unpacks itself to `%TEMP%` on every start, which some heuristics treat as suspicious. Use `tlspeek-windows.zip` from the same release instead: unzip it and run `tlspeek	lspeek.exe`.
+To check a download, compare `certutil -hashfile <file> SHA256` with its line in `SHA256SUMS` from the same release.
+Antivirus may still warn (root certificate, WinDivert driver and admin rights look alike to malware heuristics): add an exclusion or report a false positive.
 
 From source: `tlspeek.cmd` installs Python 3.13 (winget, or the
 python.org installer) and `mitmproxy pystray pillow` (`pip install --user`) on first run.
@@ -43,7 +45,7 @@ Or build the exe yourself:
 pip install mitmproxy pystray pillow pyinstaller
 pyinstaller --onefile --name tlspeek --icon app/icon.ico --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
 ```
-The exe lands in `dist\`.
+The exe lands in `dist\`. Use `--onedir` instead of `--onefile` for the folder build. CI also adds `--version-file app/version_info.txt`.
 
 ## Usage
 Double-click `tlspeek.cmd` (or `tlspeek.exe`). The start page opens in your browser.
@@ -108,6 +110,7 @@ app\
   tlspeek.py           command line: capture / open / cleanup, CA handling, HAR on exit
   home.py              start page server
   version.py           release name, written by CI from the git tag
+  version_info.txt     Windows version resource of the exe, filled in by CI
   win.py               flags, ports, UAC relaunch, console window, tray icon
   addon.py             mitmproxy addon: UI server, flow tracking, intercept, decoders
   export.py            credential masking, HAR and Postman export
