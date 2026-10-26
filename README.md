@@ -122,6 +122,7 @@ app\
   observe.py           connection, TLS, certificate and timing details
   findings.py          passive security checks
   apimap.py            endpoint grouping, JSON shapes, OpenAPI export
+  hosts.py             domains, identifiers sent, rate limits per host
   web.py               request handler base for both local servers
   test_tlspeek.py      redaction and UI API checks
   test_curl.mjs        cURL paste parser checks
