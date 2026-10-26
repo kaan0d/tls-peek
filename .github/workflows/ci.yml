@@ -23,6 +23,7 @@ jobs:
         shell: bash
         run: for f in ui/*.js; do node --input-type=module --check < "$f" || exit 1; done
       - run: node app/test_curl.mjs
+      - run: npm i --no-save --no-package-lock playwright-core@1.49.0  # drives the runner's Chrome in test_ui.mjs
       - run: pip install mitmproxy pystray pillow pyinstaller
       - run: python app\test_tlspeek.py
         timeout-minutes: 10

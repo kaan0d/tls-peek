@@ -9,3 +9,4 @@ dist/
 settings.json
 dist-dir/
 build-dir/
+node_modules/

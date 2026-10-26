@@ -79,6 +79,8 @@ Data folder: `%LOCALAPPDATA%\tls-peek` for the exe (never synced, survives movin
 python app\test_tlspeek.py
 node app\test_curl.mjs
 ```
+`test_tlspeek.py` also clicks every row and tab of a varied session in Chrome when
+`npm i --no-save playwright-core` has been run (always in CI).
 Covers field-name matching and redacted HAR export, findings, endpoint grouping and OpenAPI output, then
 runs the UI server and checks connection and timing data, TCP/UDP/DNS flows and the raw HTTP view,
 change tracking, pending state, body search, the Host guard, live program switching,
@@ -120,6 +122,7 @@ app\
   web.py               request handler base for both local servers
   test_tlspeek.py      redaction and UI API checks
   test_curl.mjs        cURL paste parser checks
+  test_ui.mjs          browser click-through of every row and tab
 ui\
   home.html            start page
   index.html           capture UI, with style.css and one ES module per panel

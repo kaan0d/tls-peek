@@ -1,0 +1,30 @@
+// Opens the UI of a running session in a real browser, clicks every row and every tab of its detail,
+// and fails on any script error. Usage: node app/test_ui.mjs PORT
+import { chromium } from "playwright-core";
+
+const browser = await chromium.launch({ channel: "chrome" });
+const page = await browser.newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(e.message));
+page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+
+await page.goto(`http://127.0.0.1:${process.argv[2]}/`);
+await page.waitForSelector("tr[data-id]");
+if (await page.isVisible("dialog#picker[open]")) await page.keyboard.press("Escape");  // a live capture asks for a program
+const ids = await page.$$eval("tr[data-id]", (rows) => rows.map((r) => r.dataset.id));
+if (ids.length < 10) throw new Error(`only ${ids.length} rows listed`);
+
+let tabs = 0;
+for (const id of ids) {
+  await page.click(`tr[data-id="${id}"]`);
+  await page.waitForSelector("#detail .tab");
+  for (const key of await page.$$eval("#detail .tab", (t) => t.map((b) => b.dataset.tab))) {
+    await page.click(`#detail .tab[data-tab="${key}"]`);
+    await page.waitForSelector(`#detail .tab[data-tab="${key}"][aria-selected="true"]`);
+    tabs++;
+  }
+}
+await page.waitForTimeout(500);  // late fetches (Raw tab) finish
+await browser.close();
+if (errors.length) throw new Error(`script errors:\n${errors.join("\n")}`);
+console.log(`ui ok (${ids.length} rows, ${tabs} tabs)`);

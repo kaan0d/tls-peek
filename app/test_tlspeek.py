@@ -4,6 +4,7 @@ Run: python app/test_tlspeek.py   (needs mitmproxy installed)
 """
 import atexit
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -510,6 +511,13 @@ try:
         assert call(path)[0] == 200, path
     for fmt in ("har", "postman"):
         assert post("/api/export", {"format": fmt})[0] == 200, fmt
+    # the same session in a real browser: every row, every tab, no script error (needs playwright-core and Chrome)
+    ui_test = here / "test_ui.mjs"
+    if (here.parent / "node_modules" / "playwright-core").exists():
+        subprocess.run(["node", ui_test, str(port)], check=True)
+    else:
+        assert not os.environ.get("CI"), "playwright-core missing in CI"
+        print("ui in browser skipped: npm i --no-save playwright-core")
 finally:
     proc.kill()
 print("every flow kind ok")
