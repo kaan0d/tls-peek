@@ -65,6 +65,8 @@ CHECKS = {
                        "A browser would block the real request because the OPTIONS answer does not allow it."),
     "retry": ("info", "Retried after a server error or rate limit",
               "The same URL was called again within a minute of a 5xx or 429. Check that the program backs off."),
+    "quic": ("info", "HTTP/3 (QUIC) traffic, not decrypted",
+             "The program talks QUIC over UDP 443. tls-peek lists these streams but cannot read them; blocking UDP 443 makes most programs fall back to HTTPS, which it can."),
     "server-error": ("info", "Server error (5xx)", "The server failed to handle the request; the body may explain why."),
     "basic-auth": ("medium", "HTTP Basic credentials",
                    "Username and password are only Base64 encoded and sent with every request."),
@@ -176,6 +178,21 @@ def beacons(flows, ids):
             out.append({"check": "beacon", "host": host, "detail": f"{method} {path}: {len(group)} calls every {mean:.1f}s",
                         "ids": [ids[f.id] for f in group], "first": times[0], "last": times[-1]})
     return out
+
+
+def quic(flows, ids):
+    """UDP streams to port 443 whose first packet has the QUIC long-header bit."""
+    out = {}
+    for f in flows:
+        if f.type != "udp" or f.id not in ids or not f.messages or not f.messages[0].content[:1]:
+            continue
+        addr = f.server_conn.address
+        if addr and addr[1] == 443 and f.messages[0].content[0] & 0x80:
+            host = f.server_conn.sni or addr[0]
+            e = out.setdefault(host, {"check": "quic", "host": host, "detail": "UDP 443", "ids": [], "first": f.timestamp_start, "last": f.timestamp_start})
+            e["ids"].append(ids[f.id])
+            e["last"] = max(e["last"], f.timestamp_start)
+    return list(out.values())
 
 
 def retries(flows, ids):
@@ -331,7 +348,7 @@ def check(flows, ids):
                     add("server-version", f, f"{name}: {value}")
 
     out = []
-    for e in [*found.values(), *beacons(flows, ids), *retries(flows, ids)]:
+    for e in [*found.values(), *beacons(flows, ids), *retries(flows, ids), *quic(flows, ids)]:
         severity, title, why = CHECKS[e["check"]]
         out.append({**e, "count": len(e["ids"]), "severity": severity, "title": title, "why": why})
     return sorted(out, key=lambda e: (ORDER[e["severity"]], e["check"], e["host"], e["detail"]))

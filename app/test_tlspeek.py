@@ -173,6 +173,10 @@ for want in (("cert-self-signed", ""), ("weak-cipher", "RC4-SHA"),
              ("rate-limited", "Retry-After: 7"), ("beacon", "GET /poll: 6 calls every 5.0s")):
     assert want in kinds, (want, sorted(kinds))
 assert any(x["check"] == "cert-name-mismatch" for x in got)
+q = tflow.tudpflow()
+q.messages[0].content = bytes.fromhex("c300000001")
+q.server_conn.address, q.server_conn.sni = ("quic.example", 443), None
+assert [x["host"] for x in findings.check([q], {q.id: 0}) if x["check"] == "quic"] == ["quic.example"], "QUIC streams are named, not hidden"
 pre = tflow.tflow(req=tutils.treq(method=b"OPTIONS", path=b"/api", headers=[(b"access-control-request-method", b"POST"),
                                                                               (b"access-control-request-headers", b"x-foo, content-type")]),
                   resp=tutils.tresp(status_code=204, headers=[(b"access-control-allow-headers", b"content-type")]))
