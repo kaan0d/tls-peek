@@ -1,3 +1,5 @@
+![tls-peek: see what your programs say](docs/banner.png)
+
 # tls-peek
 
 See the HTTPS requests (URL, headers, tokens, bodies) one Windows desktop
@@ -34,7 +36,7 @@ administrator rights.
 ## Setup
 Download from [Releases](https://github.com/kaan0d/tls-peek/releases/latest), no Python needed. Two builds of the same program:
 - `tlspeek.exe`: one file. It unpacks itself to `%TEMP%` on every start.
-- `tlspeek-windows.zip`: a folder. Unzip anywhere and run `tlspeek\tlspeek.exe`. Use it when antivirus flags the single exe (it does not unpack at start). Both builds keep their data in the same folder, see Usage.
+- `tlspeek-windows.zip`: a folder. Unzip anywhere and run `tlspeek\tlspeek.exe`. Use it when antivirus flags the single exe (it does not unpack at start). Both builds keep their data in the same folder.
 
 To check a download, compare `certutil -hashfile <file> SHA256` with its line in `SHA256SUMS` from the same release.
 Antivirus may still warn (root certificate, WinDivert driver and admin rights look alike to malware heuristics): add an exclusion or report a false positive.
@@ -50,89 +52,20 @@ pyinstaller --onefile --name tlspeek --icon app/icon.ico --hidden-import pystray
 The exe lands in `dist\`. Use `--onedir` instead of `--onefile` for the folder build. CI also adds `--version-file app/version_info.txt`.
 
 ## Usage
-Double-click `tlspeek.cmd` (or `tlspeek.exe`). The start page opens in your browser.
-
-1. Click **Start capture** and accept the UAC prompt. A tray icon appears.
-2. The UI asks which program to capture: pick it from the list (tick **Background** for tray apps) or press **Use again** for the last one. **Program** switches later.
-3. Optionally set a host filter such as `api.example.com` and press **Apply**.
-4. Close and reopen the monitored program, then do the action. WinDivert only sees new connections.
-5. Press **Stop** (UI or tray). The redacted HAR lands in `captures\`, the CA is removed and the tab returns to the start page.
-
-Closing the start page with nothing running ends tls-peek.
-
-Tick rows (Ctrl/Shift-click for several) to compare two or export a selection.
+1. Download `tlspeek.exe` or `tlspeek-windows.zip` from Releases (see Setup).
+   - **exe:** double-click it, or run it from a terminal.
+   - **zip:** unzip it anywhere, open the `tlspeek` folder and double-click `tlspeek.exe`. Same program, but it does not unpack itself at start, which antivirus products like better.
+2. The start page opens in your browser. Click **Start capture** and accept the Windows administrator prompt. A tray icon appears.
+3. Pick the program to watch (tick **Background** for tray apps), optionally set a host filter, then close and reopen that program and do the action. Only connections opened after the capture starts are seen.
+4. Read the traffic in the browser. `Ctrl K` jumps to panels, hosts and requests.
+5. Press **Stop** (in the page or the tray). The capture is saved, the temporary certificate is removed and the page returns to the start page, where saved sessions can be opened again.
 
 ```
-tlspeek.cmd  /  tlspeek.exe          start page
-tlspeek.exe capture                  start a capture right away
-tlspeek.exe open [FILE.mitm]         view a saved session (or drop the file on the exe)
-tlspeek.exe cleanup                  untrust and delete the CA after a crash
-tlspeek.exe report FILE.mitm [--json] [--fail-on high]   findings and endpoints; exit code 1 at or above that level
-tlspeek.exe --version                print the release
-python app\tlspeek.py ...            same commands without the exe
+tlspeek.exe                        start page
+tlspeek.exe capture                start a capture right away
+tlspeek.exe open FILE.mitm         view a saved session (or drop the file on the exe)
+tlspeek.exe report FILE.mitm --fail-on high   findings for scripts; exit code 1 at or above that level
+tlspeek.exe cleanup                remove the certificate after a crash
 ```
 
-Data folder: `%LOCALAPPDATA%\tls-peek` for the exe (never synced, survives moving the exe), the repo folder for `tlspeek.cmd`. It holds `captures\`, the CA while a capture runs, and
-`settings.json` (created on first use): `program` (last used), `host_filter` (plain domain; a value with `\` is a regex),
-`ui_port` (default 8081), `auto_stop_seconds` (default 300, 0 = never stop on its own),
-`keep_days` (default 7: older captures are deleted, 0 = keep all).
-
-## Verification
-```
-python app\test_tlspeek.py
-node app\test_curl.mjs
-```
-`test_tlspeek.py` also clicks every row and tab of a varied session in Chrome when
-`npm i --no-save playwright-core` has been run (always in CI).
-Covers field-name matching and redacted HAR export, findings, endpoint grouping and OpenAPI output, then
-runs the UI server and checks connection and timing data, TCP/UDP/DNS flows and the raw HTTP view,
-change tracking, pending state, body search, the Host guard, live program switching,
-pause, edit-and-resend against a local echo server, Stop and auto-stop, bookmarks and
-notes surviving in the session file, decoders and sandboxed previews, HAR and Postman
-export, that tray polling does not keep an unattended capture alive, that a capture stops
-with its starter, the start page (sessions, path checks, open and close, exit), and intercept
-on real proxied calls: the caller waits, gets an edited request and a faked response, drops, and release-all,
-rewrite rules (replace, header, fixed response) on the same calls, and duplicate, new and saved requests.
-`test_curl.mjs` checks the cURL paste parser.
-
-## Limits
-- **Certificate not accepted:** pinned hosts cannot be decrypted. Apps started before the capture may also refuse the new CA until restarted. Their first connection fails; later ones, also in later captures, pass through undecrypted so the app keeps working. The UI lists these hosts in one collapsible bar, and Try again decrypts them again.
-- **Auto-stop needs an open tab.** A tab the browser puts to sleep (Edge sleeping tabs) counts as closed after `auto_stop_seconds`.
-- **Bodies over 5 MB** are streamed through and not stored or shown.
-- **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
-- **Redaction is by field name** (auth, token, password, secret, api key, session id, ...), cookie values, secret-looking
-  path segments, plus JWTs, bearer tokens and well-known key formats anywhere. Plain fields such as `user`, `code` or `statusCode` stay readable.
-  Other free-text personal data is not masked. The UI always shows real values; only exports are masked. Check exports before you share them.
-- **Saved requests keep their tokens and cookies** as written, in plain text. Keep `captures\` private.
-- **WebSocket, TCP, UDP and DNS flows** can be viewed but not resent, intercepted or rewritten. Only the last 1000 WebSocket and 200 TCP or UDP messages are shown.
-- **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.
-
-## Layout
-```
-tlspeek.cmd            launcher
-settings.json          created on first use (exe: in %LOCALAPPDATA%\tls-peek)
-app\
-  bootstrap.ps1        installs Python and the Python packages if missing, runs tlspeek.py
-  tlspeek.py           command line: capture / open / cleanup, CA handling, HAR on exit
-  home.py              start page server
-  version.py           release name, written by CI from the git tag
-  version_info.txt     Windows version resource of the exe, filled in by CI
-  win.py               flags, ports, UAC relaunch, console window, tray icon
-  addon.py             mitmproxy addon: UI server, flow tracking, intercept, decoders
-  export.py            credential masking, HAR and Postman export
-  observe.py           connection, TLS, certificate and timing details
-  findings.py          passive security checks
-  apimap.py            endpoint grouping, JSON shapes, OpenAPI export
-  hosts.py             domains, identifiers sent, rate limits per host
-  web.py               request handler base for both local servers
-  test_tlspeek.py      redaction and UI API checks
-  test_curl.mjs        cURL paste parser checks
-  test_ui.mjs          browser click-through of every row and tab
-ui\
-  home.html            start page
-  index.html           capture UI, with style.css and one ES module per panel
-  base.css             colours, fonts and background shared by both pages
-  ribbon.js            traffic ribbon in the toolbar
-  palette.js           command palette
-  fonts\               Geist, Geist Mono, Instrument Serif (SIL OFL, licences included)
-```
+Captures and `settings.json` live in `%LOCALAPPDATA%	ls-peek`. Captures contain credentials: keep them private.

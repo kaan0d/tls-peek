@@ -12,7 +12,7 @@
 </head>
 <body>
 <header>
-  <h1><img src="ui/icon.svg" alt=""><span>tls-<em>peek</em></span></h1>
+  <h1><img class="mark" src="ui/icon.svg" alt=""><img class="word logo-dark" src="ui/wordmark-dark.svg" alt="tls-peek"><img class="word logo-light" src="ui/wordmark-light.svg" alt="tls-peek"></h1>
   <canvas id="ribbon" role="img" aria-label="Requests over time"></canvas>
   <div class="field live-only">
     <label for="program-btn">Program</label>
@@ -31,7 +31,7 @@
   <button id="release-all" type="button" hidden>Continue all</button>
   <span id="status" class="status">Connecting…</span>
   <span class="spacer"></span>
-  <button id="palette-btn" type="button" title="Jump to anything: panels, hosts, requests, actions">Search anything <kbd>Ctrl K</kbd></button>
+  <button id="palette-btn" type="button" title="Jump to anything: panels, hosts, requests, actions"><span class="long">Search anything</span> <kbd>Ctrl K</kbd></button>
   <button id="compose-btn" type="button" title="Write a new request, paste a cURL command, or send a saved request">Requests…</button>
   <button id="api-btn" type="button" title="Endpoints grouped from the captured requests, with an OpenAPI download">API map</button>
   <button id="findings-btn" type="button" title="Passive security checks on the captured traffic">Findings<span id="findings-badge" class="badge" hidden></span></button>

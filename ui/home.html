@@ -14,8 +14,10 @@ main { max-width: 940px; margin: 0 auto; padding: 56px 20px 64px; display: grid;
 .hero h1 { font: 400 clamp(44px, 8vw, 84px)/.95 var(--display); margin: 0; letter-spacing: -.02em; }
 .hero h1 em { color: var(--accent); }
 .lede { color: var(--muted); margin: 18px 0 0; font-size: 16px; max-width: 560px; }
-.brand { display: flex; gap: 8px; align-items: center; color: var(--muted); font: 600 12px var(--mono); letter-spacing: .06em; margin-bottom: 20px; }
-.brand img { width: 18px; height: 18px; filter: drop-shadow(0 0 8px var(--glow)); }
+.brand { display: flex; gap: 14px; align-items: center; color: var(--muted); font: 600 12px var(--mono); letter-spacing: .06em; margin-bottom: 26px; }
+.brand .mark { width: 46px; height: 46px; filter: drop-shadow(0 6px 20px var(--glow)); }
+.brand .word { height: 32px; width: auto; }
+.brand #version { border: 1px solid var(--line-strong); border-radius: 999px; padding: 1px 9px; }
 section { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 22px 26px; box-shadow: var(--shadow);
   backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4); }
 h2 { font: 400 28px/1.1 var(--display); margin: 0 0 14px; display: flex; gap: 12px; align-items: center; }
@@ -53,7 +55,7 @@ td.actions > * { margin-left: 4px; }
 <body>
 <main>
   <header class="hero">
-    <div class="brand"><img src="ui/icon.svg" alt="">TLS-PEEK <span id="version"></span></div>
+    <div class="brand"><img class="mark" src="ui/logo.svg" alt=""><img class="word logo-dark" src="ui/wordmark-dark.svg" alt="tls-peek"><img class="word logo-light" src="ui/wordmark-light.svg" alt="tls-peek"><span id="version"></span></div>
     <h1>See what your programs <em>say</em>.</h1>
     <p class="lede">Every HTTPS request one Windows program sends: URL, headers, tokens, bodies. Nothing hidden, nothing leaves this computer.</p>
   </header>

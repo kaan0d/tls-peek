@@ -76,4 +76,12 @@ button { transition: border-color .15s var(--ease), background-color .15s var(--
 button:hover:not(:disabled) { border-color: color-mix(in oklch, var(--accent) 60%, var(--line-strong)); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: .45; cursor: default; }
+/* the wordmark comes in two inks; the page theme decides which one shows */
+.logo-light { display: none; }
+:root[data-theme="light"] .logo-light { display: inline-block; }
+:root[data-theme="light"] .logo-dark { display: none; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .logo-light { display: inline-block; }
+  :root:not([data-theme="dark"]) .logo-dark { display: none; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

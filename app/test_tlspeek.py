@@ -724,6 +724,9 @@ try:
     assert any(x["name"] == fake.name for x in st["sessions"]) and st["child"] is None, st
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/base.css") as r:  # the start page shares the UI colours
         assert r.headers["Content-Type"].startswith("text/css") and r.read() == (root / "ui/base.css").read_bytes()
+    for logo in ("icon", "logo", "wordmark-dark", "wordmark-light"):  # the start page and the capture UI show these
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/{logo}.svg") as r:
+            assert r.headers["Content-Type"].startswith("image/svg+xml") and b"<svg" in r.read(100), logo
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/fonts/geist-latin-wght-normal.woff2") as r:  # the fonts ship with the app
         assert r.headers["Content-Type"] == "font/woff2" and r.read(4) == b"wOF2"
     try:
