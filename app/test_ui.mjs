@@ -26,6 +26,16 @@ for (const id of ids) {
     tabs++;
   }
 }
+for (const panel of ["stats", "api", "findings"]) {  // the three panels render over the same session
+  await page.click(`#${panel}-btn`);
+  await page.waitForTimeout(400);
+}
+await page.waitForSelector(".finding");
+const before = await page.$$eval(".finding.dismissed", (x) => x.length);
+await page.click(".finding .dismiss");  // dismiss moves a finding to the greyed-out list, restore brings it back
+await page.waitForFunction((n) => document.querySelectorAll(".finding.dismissed").length === n + 1, before);
+await page.click(".finding.dismissed .dismiss");
+await page.waitForFunction((n) => document.querySelectorAll(".finding.dismissed").length === n, before);
 await page.waitForTimeout(500);  // late fetches (Raw tab) finish
 await browser.close();
 if (errors.length) throw new Error(`script errors:\n${errors.join("\n")}`);

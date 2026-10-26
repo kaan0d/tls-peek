@@ -668,7 +668,9 @@ def make_handler(addon):
                 name = re.sub(r"[^\w.-]", "_", host) + ".openapi.json"
                 self.send(200, spec, headers=[("Content-Disposition", f'attachment; filename="{name}"')])
             elif url.path == "/api/findings":
-                self.send(200, findings.check(list(addon.flows), dict(addon.ids)))
+                muted = {tuple(m) for m in read_settings().get("dismissed_findings", [])}
+                self.send(200, [{**x, "dismissed": (x["check"], x["host"]) in muted}
+                                for x in findings.check(list(addon.flows), dict(addon.ids))])
             elif url.path == "/api/search":
                 self.send(200, addon.search(q.get("q", [""])[0]))
             elif url.path == "/api/processes":
@@ -731,6 +733,11 @@ def make_handler(addon):
                         raise ValueError("viewing a saved session")
                     addon.on_loop(lambda: addon.set_paused(bool(body.get("paused"))))
                     return self.send(200, addon.state())
+                if self.path == "/api/dismiss":  # hide one check on one host from the counts; it stays listed, greyed out
+                    pair = [str(body["check"]), str(body["host"])]
+                    muted = [m for m in read_settings().get("dismissed_findings", []) if m != pair]
+                    save_settings(dismissed_findings=muted if body.get("undo") else muted + [pair])
+                    return self.send(200, {})
                 if self.path == "/api/retry-rejected":
                     addon.on_loop(addon.retry_rejected)
                     return self.send(200, addon.state())

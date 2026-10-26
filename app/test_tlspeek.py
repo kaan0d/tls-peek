@@ -539,6 +539,12 @@ try:
     assert wire["request"]["head"].startswith("GET /path HTTP/1.1\r\n") and wire["response"]["body_size"] == 7, wire
     assert call(f"/api/raw/{tcp['id']}")[0] == 404 and call(f"/api/body/{tcp['id']}")[0] == 404
     assert call("/api/findings")[0] == 200 and len(call("/api/endpoints")[1]) == 1
+    first = call("/api/findings")[1][0]
+    assert not first["dismissed"] and first["count"] == len(first["ids"]) and first["first"] <= first["last"], first
+    post("/api/dismiss", {"check": first["check"], "host": first["host"]})
+    assert [x["dismissed"] for x in call("/api/findings")[1] if x["check"] == first["check"] and x["host"] == first["host"]] == [True], "dismissed stays listed"
+    post("/api/dismiss", {"check": first["check"], "host": first["host"], "undo": True})
+    assert not call("/api/findings")[1][0]["dismissed"]
     assert len(post("/api/export", {"format": "har"})[1]["log"]["entries"]) == 1
 finally:
     proc.kill()

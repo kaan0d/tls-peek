@@ -148,7 +148,7 @@ def beacons(flows, ids):
         mean = sum(gaps) / len(gaps)
         if mean >= 1 and max(abs(g - mean) for g in gaps) <= mean * 0.2:
             out.append({"check": "beacon", "host": host, "detail": f"{method} {path}: {len(group)} calls every {mean:.1f}s",
-                        "ids": [ids[f.id] for f in group]})
+                        "ids": [ids[f.id] for f in group], "first": times[0], "last": times[-1]})
     return out
 
 
@@ -162,6 +162,8 @@ def check(flows, ids):
         entry = found.setdefault((key, host, detail), {"check": key, "host": host, "detail": detail, "ids": []})
         if ids[f.id] not in entry["ids"]:
             entry["ids"].append(ids[f.id])
+        entry["first"] = min(entry.get("first", f.request.timestamp_start), f.request.timestamp_start)
+        entry["last"] = max(entry.get("last", 0), f.request.timestamp_start)
 
     for f in flows:
         if f.type != "http" or f.id not in ids:
@@ -265,5 +267,5 @@ def check(flows, ids):
     out = []
     for e in [*found.values(), *beacons(flows, ids)]:
         severity, title, why = CHECKS[e["check"]]
-        out.append({**e, "severity": severity, "title": title, "why": why})
+        out.append({**e, "count": len(e["ids"]), "severity": severity, "title": title, "why": why})
     return sorted(out, key=lambda e: (ORDER[e["severity"]], e["check"], e["host"], e["detail"]))
