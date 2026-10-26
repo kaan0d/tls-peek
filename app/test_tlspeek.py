@@ -6,6 +6,7 @@ import atexit
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -272,6 +273,12 @@ hdr = tflow.tflow(req=tutils.treq(path=b"/p?trace=URLNEEDLE"), resp=tutils.tresp
 finder = addon.TlsPeek()
 finder.flows, finder.ids = [hdr], {hdr.id: 0}
 assert finder.search("urlneedle") == [0] and finder.search("hdrneedle") == [0], "search covers URL and headers"
+assert finder.search("hdr.*DLE", regex=True) == [0] and finder.search("^nothing$", regex=True) == []
+try:
+    finder.search("(", regex=True)
+    raise AssertionError("a broken pattern must raise")
+except re.error:
+    pass
 import observe
 assert observe.explain("[WinError 10061] Uzaktaki bilgisayar reddetti") == "[WinError 10061] Uzaktaki bilgisayar reddetti (connection refused: nothing listens on that port)"
 assert observe.explain("plain failure") == "plain failure" and observe.explain(None) is None
@@ -816,6 +823,11 @@ try:
     assert last["rules"] == 3 and any("header x-added" in x for x in last["rule_log"]), last  # the list says which rules changed it
     assert ["x-added", "1"] in call(f"/api/flow/{last['id']}")[1]["response"]["headers"]
 
+    # a response rule can be limited to some statuses: this one never runs because the answers are 200
+    post("/api/rules", {"rules": [{"action": "replace", "phase": "response", "find": "server got", "replace": "nope", "when_status": "5xx, 404"}]})
+    program_call("only5xx", b"w")
+    assert results["only5xx"] == "server got:w", results
+    assert post("/api/rules", {"rules": [{"action": "header", "name": "a", "value": "b", "when_status": "oops"}]})[0] == 400
     post("/api/rules", {"rules": [{"action": "respond", "url": "/x", "type": "text/plain", "body": "mocked"}]})
     program_call("mock", b"z")
     assert results["mock"] == "mocked", results

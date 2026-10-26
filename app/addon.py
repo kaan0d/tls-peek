@@ -64,6 +64,15 @@ def save_settings(**changes):
     SETTINGS.write_text(json.dumps(settings, indent=2), "utf-8")
 
 
+def status_matches(rule, flow):
+    """A response rule with 'only when status is' (404, 5xx, ...) runs only for those answers."""
+    when = rule.get("when_status")
+    if not when or rule["phase"] != "response" or not flow.response:
+        return True
+    code = str(flow.response.status_code)
+    return any(code == t or (t.endswith("xx") and code[0] == t[0]) for t in when.split(","))
+
+
 def matches(rule, flow):
     """URL substring (any case) and method of an intercept or rewrite rule; empty matches all."""
     return ((not rule["url"] or rule["url"].lower() in flow.request.pretty_url.lower())
@@ -86,6 +95,7 @@ def clean_rule(r):
         "value": str(r.get("value", "")),
         "find": str(r.get("find", "")),
         "replace": str(r.get("replace", "")),
+        "when_status": str(r.get("when_status", "")).replace(" ", "").lower(),  # response rules: only for these statuses, e.g. 5xx,404
         "status": int(r.get("status") or 200),
         "type": str(r.get("type", "")).strip() or "application/json",
         "body": str(r.get("body", "")),
@@ -94,6 +104,8 @@ def clean_rule(r):
         raise ValueError("a header rule needs a header name")
     if action == "replace" and not rule["find"]:
         raise ValueError("a replace rule needs text to find")
+    if rule["when_status"] and not all(re.fullmatch(r"[1-5]\d\d|[1-5]xx", t) for t in rule["when_status"].split(",")):
+        raise ValueError("'only when status is' takes codes like 404 or classes like 5xx, separated by commas")
     if not 100 <= rule["status"] <= 599:
         raise ValueError("status must be between 100 and 599")
     return rule
@@ -261,7 +273,7 @@ class TlsPeek:
         msg = flow.request if phase == "request" else flow.response
         applied = 0
         for r in self.rules:
-            if not r["enabled"] or r["phase"] != phase or not matches(r, flow):
+            if not r["enabled"] or r["phase"] != phase or not matches(r, flow) or not status_matches(r, flow):
                 continue
             applied += 1
             what = {"respond": f"answered with {r['status']}", "header": f"{'set' if r['value'] else 'removed'} header {r['name']}"}.get(
@@ -578,18 +590,22 @@ class TlsPeek:
         return {"text": text[:MAX_BODY], "truncated": len(text) > MAX_BODY, "view": res.view_name,
                 "views": sorted(contentviews.registry.keys())}
 
-    def search(self, q):
+    def search(self, q, regex=False):
+        pattern = re.compile(q, re.I) if regex else None  # re.error reaches the caller: the UI turns the box red
         q = q.lower()
+
+        def has(text):
+            return bool(pattern.search(text)) if pattern else q in text.lower()
 
         def hit(f):
             if f.type in ("tcp", "udp"):
-                return any(q in m.content.decode("utf-8", "replace").lower() for m in f.messages)
+                return any(has(m.content.decode("utf-8", "replace")) for m in f.messages)
             if f.type != "http":
                 return False
-            return (q in f.request.url.lower()
-                    or any(q in f"{k}: {v}".lower() for m in (f.request, f.response) if m for k, v in m.headers.items(multi=True))
-                    or any(q in (body_text(m) or "").lower() for m in (f.request, f.response))
-                    or (f.websocket and any(m.is_text and q in m.text.lower() for m in f.websocket.messages)))
+            return (has(f.request.url)
+                    or any(has(f"{k}: {v}") for m in (f.request, f.response) if m for k, v in m.headers.items(multi=True))
+                    or any(has(body_text(m) or "") for m in (f.request, f.response))
+                    or (f.websocket and any(m.is_text and has(m.text) for m in f.websocket.messages)))
 
         def safe_hit(f):
             try:
@@ -727,7 +743,10 @@ def make_handler(addon):
                 self.send(200, [{**x, "dismissed": (x["check"], x["host"]) in muted}
                                 for x in findings.check(list(addon.flows), dict(addon.ids))])
             elif url.path == "/api/search":
-                self.send(200, addon.search(q.get("q", [""])[0]))
+                try:
+                    self.send(200, addon.search(q.get("q", [""])[0], q.get("regex", [""])[0] == "1"))
+                except re.error as e:
+                    self.send(400, {"error": f"bad regular expression: {e}"})
             elif url.path == "/api/processes":
                 procs = [{"name": p.executable.name, "display": p.display_name, "path": str(p.executable)}
                          for p in pinfo.active_executables()

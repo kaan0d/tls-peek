@@ -64,20 +64,26 @@ function matches(f) {
   const q = $("#search").value.trim().toLowerCase();
   if (!q) return true;
   if (bodyHits) return bodyHits.has(f.id);
-  return `${f.method} ${f.status ?? ""} ${f.url} ${f.type}`.toLowerCase().includes(q);
+  const text = `${f.method} ${f.status ?? ""} ${f.url} ${f.type}`.toLowerCase();
+  if (!$("#search-regex").checked) return text.includes(q);
+  try { return new RegExp(q, "i").test(text); } catch { return true; }  // a half-typed pattern shows everything; the box turns red
 }
 
 let searchTimer;
 async function runSearch() {
-  const q = $("#search").value.trim();
+  const q = $("#search").value.trim(), rx = $("#search-regex").checked;
   bodyHits = null;
-  if (q && $("#in-bodies").checked) {
-    try { bodyHits = new Set(await api("/api/search?q=" + encodeURIComponent(q))); } catch {}
+  let bad = false;
+  if (rx && q) try { new RegExp(q); } catch { bad = true; }
+  $("#search").setAttribute("aria-invalid", bad);
+  if (q && !bad && $("#in-bodies").checked) {
+    try { bodyHits = new Set(await api("/api/search?q=" + encodeURIComponent(q) + (rx ? "&regex=1" : ""))); } catch {}
   }
   render();
 }
 $("#search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 250); });
 $("#in-bodies").addEventListener("change", runSearch);
+$("#search-regex").addEventListener("change", runSearch);
 
 // --- columns ---
 const pathOf = (f) => f.info ?? (f.url.replace(/^\w+:\/\/[^/]+/, "") || "/");

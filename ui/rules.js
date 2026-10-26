@@ -6,7 +6,7 @@ let rules = [];   // as saved on the server
 let draft = [];   // being edited in the dialog
 const METHODS = ["", "GET", "POST", "PUT", "PATCH", "DELETE"];
 const blank = () => ({ enabled: true, action: "header", phase: "request", method: "", url: "", name: "", value: "",
-  find: "", replace: "", status: 200, type: "application/json", body: "" });
+  find: "", replace: "", when_status: "", status: 200, type: "application/json", body: "" });
 
 export function showRules(s) {
   rules = s.rules || [];
@@ -44,6 +44,7 @@ function render() {
     <div class="row">
       <select data-k="method" aria-label="Method">${METHODS.map((m) => opt(m, m || "Any method", r.method)).join("")}</select>
       <input data-k="url" value="${esc(r.url)}" placeholder="URL contains (empty = every request)" aria-label="URL contains">
+      ${r.phase === "response" && r.action !== "respond" ? `<input data-k="when_status" value="${esc(r.when_status || "")}" placeholder="Only for status, e.g. 5xx" aria-label="Only when the status is" style="flex: 0 0 150px">` : ""}
     </div>
     ${fields(r)}</div>`).join("") || `<p class="empty">No rules yet. Add one to change traffic without holding it.</p>`;
 }

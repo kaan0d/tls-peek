@@ -26,6 +26,7 @@ header h1 img { width: 16px; height: 16px; }
 #filters { display: flex; gap: 6px; align-items: center; padding: 6px 12px; background: var(--panel);
   border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 #search { width: 260px; }
+#search[aria-invalid="true"] { border-color: var(--bad); outline-color: var(--bad); }
 .check { display: flex; gap: 4px; align-items: center; color: var(--muted); white-space: nowrap; }
 .chips { display: flex; gap: 2px; }
 .chips button { padding: 3px 8px; border-radius: 12px; font-size: 12px; }
