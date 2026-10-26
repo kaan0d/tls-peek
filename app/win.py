@@ -138,17 +138,44 @@ def owns_console():
     return getattr(sys, "frozen", False) and ctypes.windll.kernel32.GetConsoleProcessList(procs, 8) <= 2
 
 
+# The tile and letter of the logo, 128 px. app/icon.ico and ui/icon.svg are the same drawing; the pupil is drawn on
+# top so it can change colour. The small-size cut of the logo.
+TRAY_TILE = (
+    "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"
+    "vw/8B6YljPRVmy/qAAAAAElFTkSuQmCC"
+)
+TRAY_PUPIL = (0.5449, 0.3121, 0.0672)  # x, y and radius as fractions of the tile
+
+
 def tray_icon_image(paused, size=64):
-    """ui/icon.svg is the same drawing (unpaused) for the browser tab, and app/icon.ico for the exe
-    (python -c "from win import tray_icon_image as t; t(False, 256).save('icon.ico')" in app\\); change all together."""
+    """The logo for the tray: mint pupil while capturing, amber while paused."""
+    import base64
+    import io
     from PIL import Image, ImageDraw
-    s = size / 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((2 * s, 2 * s, 62 * s, 62 * s), 14 * s, fill=(224, 168, 74) if paused else (47, 111, 223))
-    d.ellipse((14 * s, 12 * s, 42 * s, 40 * s), outline="white", width=round(6 * s))  # magnifier
-    d.line((38 * s, 36 * s, 52 * s, 50 * s), fill="white", width=round(8 * s))
-    return img
+    img = Image.open(io.BytesIO(base64.b64decode(TRAY_TILE))).convert("RGBA")
+    x, y, r = (v * img.width for v in TRAY_PUPIL)
+    ImageDraw.Draw(img).ellipse((x - r, y - r, x + r, y + r), fill=(224, 168, 74) if paused else (53, 230, 171))
+    return img.resize((size, size), Image.LANCZOS)
 
 
 def start_tray(port):

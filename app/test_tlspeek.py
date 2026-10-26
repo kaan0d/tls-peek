@@ -687,6 +687,7 @@ except OSError:
 assert exits_within(proc, 5), "tray polling kept the capture alive"
 if win.tray_available():
     assert win.tray_icon_image(True).size == (64, 64)
+    assert win.tray_icon_image(True).getpixel((35, 20)) != win.tray_icon_image(False).getpixel((35, 20)), "the pupil changes colour while paused"
 print("tray ok")
 
 # --- a capture stops when the window that started it goes away ---
