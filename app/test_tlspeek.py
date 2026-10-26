@@ -801,6 +801,38 @@ try:
     program_call("mock", b"z")
     assert results["mock"] == "mocked", results
     post("/api/rules", {"rules": []})
+
+    # an event stream is passed on event by event (not buffered until it ends) and visible while it runs
+    class Events(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for i in range(4):
+                self.wfile.write(f"data: {i}\n\n".encode())
+                self.wfile.flush()
+                time.sleep(0.5)
+
+        def log_message(self, *args):
+            pass
+
+    events = ThreadingHTTPServer(("127.0.0.1", 0), Events)
+    threading.Thread(target=events.serve_forever, daemon=True).start()
+    started, seen, live = time.time(), [], None
+    with opener.open(f"http://127.0.0.1:{events.server_address[1]}/sse", timeout=20) as r:
+        for line in r:
+            if line.startswith(b"data"):
+                seen.append(time.time() - started)
+                if len(seen) == 2:
+                    time.sleep(0.8)  # the UI poll sees a pending flow with the events so far
+                    row = call("/api/flows")[1]["flows"][-1]
+                    live = (row["state"], row["size"], call(f"/api/flow/{row['id']}")[1]["response"]["body"])
+    events.shutdown()
+    assert seen[0] < 0.4 and seen[-1] - seen[0] > 1, f"events were buffered: {seen}"
+    assert live[0] == "pending" and live[1] > 0 and "data: 0" in live[2] and "data: 3" not in live[2], live
+    time.sleep(0.5)
+    end = call("/api/flows")[1]["flows"][-1]
+    assert end["state"] == "done" and "data: 3" in call(f"/api/flow/{end['id']}")[1]["response"]["body"], end
 finally:
     proxy.kill()
     upstream.shutdown()

@@ -41,6 +41,8 @@ SAVED = CAPTURES / "saved-requests.json"  # requests the user saved to send agai
 MAX_FLOWS = 5000  # ponytail: oldest flows drop from the UI past this; the .mitm file keeps all
 MAX_BODY = 200_000
 MAX_WS_MESSAGES = 1000
+LIVE_TYPES = ("text/event-stream", "application/x-ndjson", "application/stream+json")  # sent as they come, never buffered
+MAX_LIVE = 5_000_000
 NO_PROGRAM = "tlspeek-no-program.exe"  # local mode needs a target; this matches nothing
 BYE_GRACE = 10  # seconds a closed tab has to come back (a refresh) before auto-stop
 
@@ -218,7 +220,30 @@ class TlsPeek:
         self.hold_if_matching(flow, "request")
         self.touch(flow)
 
+    def responseheaders(self, flow):
+        """Event streams are passed on chunk by chunk: buffering them would delay every event of the
+        program until the stream ends. A copy of what went by is kept so the UI can show it live."""
+        if not any(t in flow.response.headers.get("content-type", "") for t in LIVE_TYPES):
+            return
+        live = flow.metadata["tlspeek_live"] = bytearray()
+        flow.metadata["tlspeek_live_seen"] = 0.0
+
+        def tap(chunk):
+            if len(live) + len(chunk) <= MAX_LIVE:
+                live.extend(chunk)
+            else:
+                flow.metadata["tlspeek_live_cut"] = True
+            if time.time() - flow.metadata["tlspeek_live_seen"] > 0.5:  # the UI polls once a second anyway
+                flow.metadata["tlspeek_live_seen"] = time.time()
+                self.touch(flow)
+            return chunk
+        flow.response.stream = tap
+
     def response(self, flow):
+        live = flow.metadata.get("tlspeek_live")
+        if live is not None and not flow.metadata.get("tlspeek_live_cut"):
+            flow.response.raw_content = bytes(live)  # streamed bodies are not stored; this one is, so Stop keeps it
+            self.resave(flow)
         if ctx.options.redact:
             redact(flow)
         self.apply_rules(flow, "response")
@@ -414,8 +439,7 @@ class TlsPeek:
             "status": r.status_code if r else None,
             "state": state,
             "type": (r.headers.get("content-type", "") if r else "").split(";")[0],
-            "size": (len(r.raw_content) if r.raw_content else int(r.headers.get("content-length", "0") or 0)
-                     if r.headers.get("content-length", "").isdigit() else 0) if r else 0,  # streamed bodies are not stored: trust the header
+            "size": self.size_of(f),
             "ms": round((r.timestamp_end - f.request.timestamp_start) * 1000) if r and r.timestamp_end else None,
             "ws": len(f.websocket.messages) if f.websocket else None,
             "held": ("response" if r else "request") if f.intercepted else None,
@@ -489,6 +513,19 @@ class TlsPeek:
                     "note": f.comment, "edited": [], "rules": 0, "ip": None, "tls": None, "ws": None, "held": None,
                     "http": None, "phases": None}
 
+    def size_of(self, f):
+        """Body bytes: what is stored, what has gone by on a live stream, else the Content-Length header (streamed)."""
+        r = f.response
+        if r is None:
+            return 0
+        if r.raw_content is not None:
+            return len(r.raw_content)
+        live = f.metadata.get("tlspeek_live")
+        if live is not None:
+            return len(live)
+        length = r.headers.get("content-length", "")
+        return int(length) if length.isdigit() else 0
+
     def detail(self, f):
         if f.type != "http":
             return {"summary": self.summary(f), "connection": observe.connection(f, self.opened_here(f)), **observe.raw_detail(f)}
@@ -498,7 +535,10 @@ class TlsPeek:
                 return None
             body = body_text(msg)
             editable = body is not None and msg.raw_content is not None and len(body) <= MAX_BODY
-            if msg.raw_content is None:
+            live = f.metadata.get("tlspeek_live")
+            if msg.raw_content is None and live is not None and msg is f.response:
+                body = bytes(live).decode("utf-8", "replace")  # still arriving: what has gone by so far
+            elif msg.raw_content is None:
                 body = "<body streamed, not stored>"
             elif body is None:
                 body = f"<binary, {len(msg.raw_content)} bytes: pick a decoder such as protobuf or hex dump>"

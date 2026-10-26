@@ -14,7 +14,7 @@ administrator rights.
 - **Live control:** switch program and host filter, pause/resume, stop, all from the UI or the tray icon.
 - **Auto-stop:** closing the last UI tab stops the capture after 10 s (5 min without any tab as a fallback).
 - **Request list:** pending requests, status/type/host/bookmark filters, URL or body search, sortable and resizable columns, waterfall timeline.
-- **Request detail:** headers, query, pretty JSON, WebSocket messages, image and sandboxed HTML previews.
+- **Request detail:** headers, query, pretty JSON, WebSocket messages, image and sandboxed HTML previews. Event streams (SSE, NDJSON) pass through as they arrive and show their events while open.
 - **Raw traffic:** non-HTTP TCP and UDP streams as text and hex, DNS lookups with their answers, and each HTTP request and response as it looks on the wire with header and body byte counts.
 - **Connection:** TLS version, cipher, ALPN, SNI and addresses on both sides, the server certificate chain, and timing split into connect, TLS, send, wait and download (also in the waterfall).
 - **Decoders:** JWTs found in headers, URL or body; Base64; mitmproxy's views (protobuf, gRPC, msgpack, hex, ...).
