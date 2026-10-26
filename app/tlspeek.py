@@ -10,6 +10,7 @@
 Dropping a .mitm file on tlspeek.exe opens it. Add --no-browser to skip opening the UI.
 """
 import ctypes
+import hashlib
 import json
 import shutil
 import subprocess
@@ -70,7 +71,10 @@ def export_har(session):
         # A flow saved again after a bookmark or note appears twice; the last copy wins.
         flows = {f.id: f for f in io.FlowReader(fo).stream() if isinstance(f, http.HTTPFlow)}
     har = make_har(list(flows.values()))
-    session.with_suffix(".har").write_text(json.dumps(har, indent=2), "utf-8")
+    out = session.with_suffix(".har")
+    out.write_text(json.dumps(har, indent=2), "utf-8")
+    # same format as SHA256SUMS: sha256sum -c works, and so does comparing with certutil -hashfile
+    out.with_name(out.name + ".sha256").write_text(f"{hashlib.sha256(out.read_bytes()).hexdigest()} *{out.name}\n", "utf-8")
     print(f"Saved redacted HAR: {session.with_suffix('.har')}")
 
 

@@ -87,7 +87,7 @@ class Home:
 
     def delete(self, name):
         path = self.session_path(name)
-        for p in (path.with_suffix(".mitm"), path.with_suffix(".har")):
+        for p in (path.with_suffix(".mitm"), path.with_suffix(".har"), path.with_suffix(".har.sha256")):
             p.unlink(missing_ok=True)
 
     def cleanup(self):

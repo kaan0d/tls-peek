@@ -15,6 +15,9 @@ STRONG = re.compile(r"pass|secret|pwd|private", re.I)  # field names whose value
 ERROR_TEXT = re.compile(r"Traceback \(most recent|SQLSTATE|You have an error in your SQL|ORA-\d{5}|Exception in thread"
                         r"|at [\w.$]+\([\w.]+:\d+\)|stack ?trace|Fatal error:.*on line \d+", re.I)
 WEAK_CIPHER = re.compile(r"RC4|3DES|DES-CBC|NULL|EXPORT|MD5|anon", re.I)
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+CARD = re.compile(r"(?<![\d.])(?:\d[ -]?){13,19}(?![\d.])")
+ID_KEY = re.compile(r"(uid|uuid|guid|cid|clientid|deviceid|idfa|gaid|aaid|adid|advertisingid|visitorid|anonymousid|installid|androidid|imei|macaddress)", re.I)
 ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
 CHECKS = {
@@ -53,6 +56,10 @@ CHECKS = {
     "ip-literal": ("info", "Request to a bare IP address", "No host name to check a certificate against; unusual for normal services and common for malware and LAN devices."),
     "beacon": ("low", "Requests at a regular interval",
                "The same URL is called on a steady timer. Normal for polling and telemetry, also how malware checks in."),
+    "pii-email": ("low", "Email address sent", "The request carries an email address; check that this host should receive it."),
+    "pii-card": ("high", "Payment card number sent", "A value passes the card number checksum. Card data belongs only with a payment provider."),
+    "identifier-sent": ("info", "Device or user identifier sent",
+                        "Stable identifiers let a host recognise the same person or device across requests; this is how tracking works."),
     "server-error": ("info", "Server error (5xx)", "The server failed to handle the request; the body may explain why."),
     "basic-auth": ("medium", "HTTP Basic credentials",
                    "Username and password are only Base64 encoded and sent with every request."),
@@ -82,13 +89,13 @@ def jwt_parts(token):
         return None, None
 
 
-def body_keys(msg):
-    """Names of the fields with a non-empty value in a JSON or form body."""
+def body_pairs(msg):
+    """(name, value) of the fields with a non-empty value in a JSON or form body."""
     text = body_text(msg)
     if not text:
         return []
     ctype = msg.headers.get("content-type", "")
-    keys = []
+    pairs = []
 
     def walk(obj):
         if isinstance(obj, dict):
@@ -96,7 +103,7 @@ def body_keys(msg):
                 if isinstance(v, (dict, list)):
                     walk(v)
                 elif v not in (None, ""):
-                    keys.append(k)
+                    pairs.append((k, str(v)))
         elif isinstance(obj, list):
             for v in obj:
                 walk(v)
@@ -107,8 +114,22 @@ def body_keys(msg):
         except ValueError:
             pass
     elif "x-www-form-urlencoded" in ctype:
-        keys = [k for k, v in parse_qsl(text) if v]
-    return keys
+        pairs = [(k, v) for k, v in parse_qsl(text) if v]
+    return pairs
+
+
+def body_keys(msg):
+    return [k for k, _ in body_pairs(msg)]
+
+
+def luhn(digits):
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2:
+            n = n * 2 - 9 if n > 4 else n * 2
+        total += n
+    return total % 10 == 0
 
 
 def lan(host):
@@ -174,6 +195,15 @@ def check(flows, ids):
             add("plain-http-local" if local else "plain-http-lan" if lan(req.pretty_host) else "plain-http", f)
             if not local and any(STRONG.search(k) for k in body_keys(req)):
                 add("password-over-http", f)
+        sent = list(req.query.items(multi=True)) + body_pairs(req)
+        for k, v in sent:
+            if EMAIL.search(v):
+                add("pii-email", f)
+            if any(luhn(d) for m in CARD.findall(v) if 13 <= len(d := re.sub(r"\D", "", m)) <= 19):
+                add("pii-card", f)
+        ident = sorted({k for k, v in sent if ID_KEY.fullmatch(re.sub(r"[-_ ]", "", k)) and v})
+        if ident:
+            add("identifier-sent", f, ", ".join(ident))
         for i in secret_path_segments(req.path):
             seg = req.path.split("?")[0].split("/")[i]
             add("secret-in-path", f, seg[:6] + "…")

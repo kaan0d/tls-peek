@@ -32,6 +32,8 @@ export async function renderApiMap() {
   const details = (e) => `<tr class="ep-detail"><td colspan="5">
     ${e.params.length ? `<div class="muted">Path parameters: <span class="mono">${e.params.map(esc).join(", ")}</span></div>` : ""}
     ${e.query.length ? `<div class="muted">Query: <span class="mono">${e.query.map(esc).join(", ")}</span></div>` : ""}
+    ${e.last_error ? `<div class="muted">Last failure: <button type="button" data-id="${e.last_error.id}">#${e.last_error.id}</button>
+      <span class="s${String(e.last_error.status)[0]}">${e.last_error.status}</span> <span class="mono">${esc(e.last_error.text)}</span></div>` : ""}
     ${Object.keys(e.request).length ? `<div class="muted">Request body</div><pre>${esc(sketch(e.request))}</pre>` : ""}
     ${Object.entries(e.responses).map(([c, s]) => `<div class="muted">Response ${esc(c)}</div><pre>${esc(sketch(s))}</pre>`).join("")}
     <div class="f-ids">${e.ids.slice(-12).map((id) => `<button type="button" data-id="${id}">#${id}</button>`).join("")}</div></td></tr>`;

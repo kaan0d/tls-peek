@@ -110,7 +110,7 @@ def endpoints(flows, ids):
         path, params = template(r.path)
         g = groups.setdefault((r.pretty_host, r.method, path), {
             "host": r.pretty_host, "method": r.method, "path": path, "params": params, "scheme": r.scheme,
-            "ids": [], "statuses": {}, "ms": [], "query": [], "request": {}, "responses": {}, "samples": 0})
+            "ids": [], "statuses": {}, "ms": [], "query": [], "request": {}, "responses": {}, "samples": 0, "last_error": None})
         g["ids"].append(ids[f.id])
         for k in r.query.keys():
             if k not in g["query"]:
@@ -118,6 +118,8 @@ def endpoints(flows, ids):
         resp = f.response
         if resp:
             g["statuses"][resp.status_code] = g["statuses"].get(resp.status_code, 0) + 1
+            if resp.status_code >= 400:  # the newest failure, with what the server said about it
+                g["last_error"] = {"id": ids[f.id], "status": resp.status_code, "text": (body_text(resp) or "")[:300]}
             if resp.timestamp_end:
                 g["ms"].append((resp.timestamp_end - r.timestamp_start) * 1000)
         if g["samples"] < MAX_SAMPLES:
@@ -160,7 +162,8 @@ def merge_named(groups):
                 name = unique("name", params)
                 params.append(name)
                 segs.append("{" + name + "}")
-        g = {**members[0], "path": "/".join(segs), "params": params, "ids": [], "statuses": {}, "ms": [], "query": []}
+        g = {**members[0], "path": "/".join(segs), "params": params, "ids": [], "statuses": {}, "ms": [], "query": [],
+             "last_error": max((m["last_error"] for m in members if m["last_error"]), key=lambda e: e["id"], default=None)}
         for m in members:
             g["ids"] += m["ids"]
             g["ms"] += m["ms"]

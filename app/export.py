@@ -8,6 +8,8 @@ from urllib.parse import parse_qsl, urlencode
 from mitmproxy.addons.savehar import SaveHar
 from mitmproxy.utils import strutils
 
+from version import VERSION
+
 MASK = "***"
 
 # Field names are split into words ("X-Api-Key" -> x, api, key; "accessToken" ->
@@ -172,9 +174,9 @@ def body_text(msg):
 def mask_note(hits, mask):
     """What the export did to the data, in words, so a reader of the file knows."""
     if not mask:
-        return "tls-peek: not masked, credentials are in clear text"
+        return f"tls-peek {VERSION}: not masked, credentials are in clear text"
     top = ", ".join(f"{name} x{n}" for name, n in hits.most_common(8))
-    return f"tls-peek: masked {sum(hits.values())} values" + (f" ({top})" if top else "") + "; field names and cookie attributes stay"
+    return f"tls-peek {VERSION}: masked {sum(hits.values())} values" + (f" ({top})" if top else "") + "; field names and cookie attributes stay"
 
 
 def make_har(flows, mask=True):

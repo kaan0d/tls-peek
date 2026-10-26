@@ -65,6 +65,8 @@ with open(tmp / "c.mitm", "wb") as fo:
 
 tlspeek.export_har(tmp / "c")
 har = (tmp / "c.har").read_text()
+import hashlib
+assert (tmp / "c.har.sha256").read_text().split()[0] == hashlib.sha256((tmp / "c.har").read_bytes()).hexdigest(), "export hash file"
 for secret in ("QTOKEN", "HTOKEN", "alice", "PW", '"K"', "SID", "SIGJWT", "HDRTOKEN", "BODYTOKEN"):
     assert secret not in har, f"{secret} leaked into HAR"
 entry = json.loads(har)["log"]["entries"][0]
@@ -92,7 +94,7 @@ for kept in ("zip_code=123", "sort_key=n", "NOT_FOUND", "x@y.z", "theme=***", "S
 body = json.loads(har["log"]["entries"][0]["response"]["content"]["text"])
 assert body["statusCode"] == 200 and body["user"] == {"id": 7, "email": "x@y.z"}, body  # plain data stays readable
 assert len(har["log"]["entries"]) == 3 and "no response" in har["log"]["entries"][2]["comment"], "failed requests stay in the HAR"
-assert har["log"]["comment"].startswith("tls-peek: masked ") and "password" in har["log"]["comment"], har["log"]["comment"]
+assert har["log"]["comment"].startswith("tls-peek ") and "masked " in har["log"]["comment"] and "password" in har["log"]["comment"], har["log"]["comment"]
 assert "not masked" in export.make_har([tricky], mask=False)["log"]["comment"]
 print("redaction ok")
 
@@ -171,6 +173,15 @@ for want in (("cert-self-signed", ""), ("weak-cipher", "RC4-SHA"),
              ("rate-limited", "Retry-After: 7"), ("beacon", "GET /poll: 6 calls every 5.0s")):
     assert want in kinds, (want, sorted(kinds))
 assert any(x["check"] == "cert-name-mismatch" for x in got)
+pii = tflow.tflow(req=tutils.treq(path=b"/t?device_id=abc&n=1", method=b"POST", headers=[(b"content-type", b"application/json")],
+                                  content=b'{"mail": "a.b@example.com", "pan": "4111 1111 1111 1111", "order": "1234567890123"}'),
+                  resp=tutils.tresp())
+got = findings.check([pii], {pii.id: 0})
+kinds = {(x["check"], x["detail"]) for x in got}
+for want in (("pii-email", ""), ("pii-card", ""), ("identifier-sent", "device_id")):
+    assert want in kinds, (want, sorted(kinds))
+assert not any("4111" in str(x) for x in got), "findings name the kind, never the value"
+assert sum(x["check"] == "pii-card" for x in got) == 1, "an order number that fails the checksum is not a card"
 print("findings ok")
 
 # --- API map and OpenAPI ---
@@ -178,6 +189,8 @@ import apimap
 
 assert apimap.template("/v1/users/123/posts/9f86d081884c7d659a2feaa0c55ad015?x=1") == ("/v1/users/{id}/posts/{hash}", ["id", "hash"])
 assert apimap.template("/api/app-config-settings-v2-final")[0] == "/api/app-config-settings-v2-final"  # a slug is not a token
+bad = tflow.tflow(req=tutils.treq(path=b"/boom"), resp=tutils.tresp(status_code=500, content=b"db is down"))
+assert apimap.endpoints([bad], {bad.id: 7})[0]["last_error"] == {"id": 7, "status": 500, "text": "db is down"}
 mixed = apimap.merge(apimap.shape([1, 2, {"x": None}]), apimap.shape([3]))
 assert mixed["items"] == {"oneOf": [{"type": "integer"}, {"type": "object", "properties": {"x": {"nullable": True}}}]}, mixed
 assert apimap.template("/a/1/b/2/c/3")[0] == "/a/{id}/b/{id2}/c/{id3}" and apimap.template("/")[0] == "/"
