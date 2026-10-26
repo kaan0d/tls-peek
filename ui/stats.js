@@ -3,6 +3,9 @@ import { $, S, esc, fmtMs, fmtSize, kv, refusal } from "./core.js";
 import { closeDetail } from "./detail.js";
 import { TYPES, filter, render, typeOf, visible } from "./list.js";
 
+const quantile = (xs, p) => xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))] : null;
+const show = (v) => v == null ? "–" : fmtMs(Math.round(v));
+
 export function renderStats() {
   const list = visible();
   const done = list.filter((f) => f.ms != null).map((f) => f.ms).sort((a, b) => a - b);
@@ -17,12 +20,13 @@ export function renderStats() {
   }
   const hosts = new Map();
   for (const f of list) {
-    const h = hosts.get(f.host) || { host: f.host, n: 0, err: 0, bytes: 0, ms: 0, timed: 0, ips: new Set(), tls: new Set(), http: new Set() };
+    const h = hosts.get(f.host) || { host: f.host, n: 0, err: 0, bytes: 0, ms: [], wait: [], ips: new Set(), tls: new Set(), http: new Set() };
     h.n++; h.err += isErr(f); h.bytes += f.size;
     if (f.ip) h.ips.add(f.ip);
     if (f.tls) h.tls.add(f.tls.replace("TLSv", ""));
     if (f.http) h.http.add(f.http.replace("HTTP/", ""));
-    if (f.ms != null) { h.ms += f.ms; h.timed++; }
+    if (f.ms != null) h.ms.push(f.ms);
+    if (f.phases?.wait != null) h.wait.push(f.phases.wait);
     hosts.set(f.host, h);
   }
   const types = new Map();
@@ -38,14 +42,14 @@ export function renderStats() {
     <h3>Status</h3><div class="headers">${kv(Object.entries(groups).filter(([, n]) => n).map(([k, n]) => [k, String(n)])) || "<i>none</i>"}</div>
     <h3>Types</h3><div class="headers">${kv([...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [TYPES.find(([v]) => v === k)[1], String(n)]))}</div>
     <h3>Hosts</h3>
-    <table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num">Avg time</th><th>IP</th><th>TLS</th><th>HTTP</th></tr></thead>
+    <table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num" title="Median request time">Median</th><th class="num" title="95th percentile request time">p95</th><th class="num" title="Median time to first byte: how long the server thought about it">Wait</th><th>IP</th><th>TLS</th><th>HTTP</th></tr></thead>
     <tbody>${[...hosts.values()].sort((a, b) => b.n - a.n).map((h) => `<tr data-host="${esc(h.host)}" title="Show only this host">
       <td>${esc(h.host)}</td><td class="num">${h.n}</td><td class="num ${h.err ? "err" : ""}">${h.err}</td>
-      <td class="num">${fmtSize(h.bytes)}</td><td class="num">${h.timed ? fmtMs(Math.round(h.ms / h.timed)) : "–"}</td>
+      <td class="num">${fmtSize(h.bytes)}</td><td class="num">${show(quantile(h.ms, 0.5))}</td><td class="num">${show(quantile(h.ms, 0.95))}</td><td class="num">${show(quantile(h.wait, 0.5))}</td>
       <td class="mono" title="${esc([...h.ips].join(", "))}">${esc([...h.ips][0] || "")}${h.ips.size > 1 ? ` +${h.ips.size - 1}` : ""}</td>
       <td>${esc([...h.tls].join(", "))}</td><td>${esc([...h.http].join(", "))}</td></tr>`).join("")}
     ${S.rejected.filter((r) => !hosts.has(r.host)).map((r) => `<tr class="rejected" title="No traffic decrypted: the program refused the capture certificate">
-      <td>${esc(r.host)}</td><td colspan="7" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table>`;
+      <td>${esc(r.host)}</td><td colspan="9" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table>`;
   $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;

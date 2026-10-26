@@ -414,7 +414,8 @@ class TlsPeek:
             "status": r.status_code if r else None,
             "state": state,
             "type": (r.headers.get("content-type", "") if r else "").split(";")[0],
-            "size": len(r.raw_content or b"") if r else 0,
+            "size": (len(r.raw_content) if r.raw_content else int(r.headers.get("content-length", "0") or 0)
+                     if r.headers.get("content-length", "").isdigit() else 0) if r else 0,  # streamed bodies are not stored: trust the header
             "ms": round((r.timestamp_end - f.request.timestamp_start) * 1000) if r and r.timestamp_end else None,
             "ws": len(f.websocket.messages) if f.websocket else None,
             "held": ("response" if r else "request") if f.intercepted else None,

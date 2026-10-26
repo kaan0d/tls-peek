@@ -314,7 +314,8 @@ document.addEventListener("keydown", (e) => {
     closeDetail();
     return;
   }
-  if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || S.selected == null || !["ArrowUp", "ArrowDown"].includes(e.key)) return;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || !["ArrowUp", "ArrowDown"].includes(e.key)) return;
+  if (S.selected == null && !e.target.closest?.("#rows")) return;  // arrows only move through rows when one is selected or focused
   const list = visible(), i = list.findIndex((f) => f.id === S.selected);
   const next = list[i + (e.key === "ArrowDown" ? 1 : -1)];
   if (next) { e.preventDefault(); select(next.id); document.querySelector("tr.sel")?.scrollIntoView({ block: "nearest" }); }

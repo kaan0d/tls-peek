@@ -231,9 +231,11 @@ export function render() {
     timeline: (f) => `<td>${timelineCell(f, t0, span)}</td>`,
   };
   const cols = shownCols();
+  const focused = document.activeElement?.closest?.("#rows tr")?.dataset.id;  // keyboard users keep their place
   $("#rows").innerHTML = list.map((f) =>
-    `<tr data-id="${f.id}" class="${f.id === S.selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}${f.state === "held" ? " is-held" : ""}">${cols.map((c) => cells[c.key](f)).join("")}</tr>`
+    `<tr tabindex="0" data-id="${f.id}" class="${f.id === S.selected ? "sel" : ""}${picked.has(f.id) ? " picked" : ""}${f.state === "held" ? " is-held" : ""}">${cols.map((c) => cells[c.key](f)).join("")}</tr>`
   ).join("");
+  if (focused) $(`#rows tr[data-id="${focused}"]`)?.focus({ preventScroll: true });
   if (atBottom) box.scrollTop = box.scrollHeight;
   if ($("#pick-all")) $("#pick-all").checked = list.length > 0 && list.every((f) => picked.has(f.id));
   $("#selection").hidden = picked.size === 0;
@@ -264,6 +266,10 @@ $("#rows").addEventListener("click", (e) => {
     return;
   }
   select(id);
+});
+$("#rows").addEventListener("keydown", (e) => {
+  const tr = e.target.closest("tr");
+  if (tr && e.target === tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(Number(tr.dataset.id)); }
 });
 $("#sel-clear").addEventListener("click", () => { picked.clear(); render(); });
 $("#clear").addEventListener("click", () => { clearedBefore = Math.max(0, ...S.flows.keys()) + 1; picked.clear(); render(); });

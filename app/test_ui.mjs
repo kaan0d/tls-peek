@@ -26,6 +26,12 @@ for (const id of ids) {
     tabs++;
   }
 }
+await page.keyboard.press("Escape");  // keyboard only: focus a row, Enter opens it, the arrow keys move on
+await page.focus(`tr[data-id="${ids[0]}"]`);
+await page.keyboard.press("Enter");
+await page.waitForSelector(`tr.sel[data-id="${ids[0]}"]`);
+await page.keyboard.press("ArrowDown");
+await page.waitForFunction((id) => document.querySelector("tr.sel")?.dataset.id !== id, ids[0]);
 for (const panel of ["stats", "api", "findings"]) {  // the three panels render over the same session
   await page.click(`#${panel}-btn`);
   await page.waitForTimeout(400);
