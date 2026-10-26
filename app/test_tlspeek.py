@@ -602,6 +602,17 @@ finally:
     proc.kill()
 print("every flow kind ok")
 
+# report: the findings of a saved session for scripts, with an exit code
+run = subprocess.run([sys.executable, here / "tlspeek.py", "report", tmp / "variety.mitm", "--json", "--fail-on", "info"],
+                     capture_output=True, text=True)
+rep = json.loads(run.stdout)
+assert run.returncode == 1 and rep["requests"] > 0 and rep["findings"] and rep["endpoints"] is not None, run.stderr
+run = subprocess.run([sys.executable, here / "tlspeek.py", "report", tmp / "variety.mitm", "--fail-on", "high"], capture_output=True, text=True)
+assert run.returncode == 1 and "findings" in run.stdout, run.stdout  # the alg none token in the session is high
+run = subprocess.run([sys.executable, here / "tlspeek.py", "report", tmp / "variety.mitm"], capture_output=True, text=True)
+assert run.returncode == 0, "without --fail-on the report never fails"
+print("report ok")
+
 # --- tray: its polling must not keep an unattended capture alive ---
 proc = start("--set", "ui_auto_stop=4")
 tray_req = lambda: urllib.request.urlopen(urllib.request.Request(

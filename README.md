@@ -25,6 +25,7 @@ administrator rights.
 - **API map:** requests grouped into endpoints (`/users/123` and `/users/octocat` become `/users/{id}` and `/users/{name}`) with calls, statuses, median time and JSON shapes; OpenAPI 3 download per host.
 - **Findings:** passive checks on requests and responses: credentials in URLs and paths, passwords over HTTP or in response bodies, plain HTTP (loopback and LAN shown as info), Basic auth, JWTs with alg none or no expiry, CORS with credentials, cookie flags, stack traces and 5xx, old TLS, weak ciphers, expired, expiring, self-signed or mismatched certificates, missing HSTS and page security headers, 429 and 407 answers, version headers, URLs called on a steady timer. Nothing is skipped quietly.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table with IP, TLS and HTTP version, plus hosts that refused the certificate.
+- **Dismiss and download:** a finding can be dismissed per host (it stays listed, greyed out, and is not counted); the panel downloads as JSON.
 - **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default. The file says how many values were masked and which fields; failed requests stay in it with status 0.
 - **Sessions:** every capture streams to `captures\session-<time>.mitm`; open it later in the same UI. **Open folder** on the start page shows them.
 - **CA hygiene:** fresh CA per session, untrusted and deleted on stop, on window close and at the next start.
@@ -65,6 +66,7 @@ tlspeek.cmd  /  tlspeek.exe          start page
 tlspeek.exe capture                  start a capture right away
 tlspeek.exe open [FILE.mitm]         view a saved session (or drop the file on the exe)
 tlspeek.exe cleanup                  untrust and delete the CA after a crash
+tlspeek.exe report FILE.mitm [--json] [--fail-on high]   findings and endpoints; exit code 1 at or above that level
 tlspeek.exe --version                print the release
 python app\tlspeek.py ...            same commands without the exe
 ```

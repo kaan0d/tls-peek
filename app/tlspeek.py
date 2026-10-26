@@ -4,6 +4,8 @@
   tlspeek.py capture        start a capture right away (asks for admin, opens the UI)
   tlspeek.py open [FILE]    view a saved .mitm session (file dialog without FILE)
   tlspeek.py cleanup        untrust and delete the CA (only needed after a crash)
+  tlspeek.py report FILE    findings and endpoints of a saved session on the console; --json for a machine-readable
+                            report, --fail-on high|medium|low|info for exit code 1 when a finding of that level exists
 
 Dropping a .mitm file on tlspeek.exe opens it. Add --no-browser to skip opening the UI.
 """
@@ -161,16 +163,44 @@ def open_session(path):
                       "--set", f"ui_port={port}", "--set", f"ui_file={path}"])
 
 
+def report(path, fail_on=None):
+    """Findings and endpoints of a .mitm file, as text or --json. Dismissed findings are listed but do not fail the run."""
+    from mitmproxy import http, io
+
+    import apimap
+    import findings
+
+    with open(path, "rb") as fo:
+        flows = list({f.id: f for f in io.FlowReader(fo).stream() if isinstance(f, http.HTTPFlow)}.values())
+    ids = {f.id: i for i, f in enumerate(flows)}
+    muted = {tuple(m) for m in addon.read_settings().get("dismissed_findings", [])}
+    found = [{**x, "dismissed": (x["check"], x["host"]) in muted} for x in findings.check(flows, ids)]
+    if "--json" in sys.argv:
+        print(json.dumps({"file": str(path), "requests": len(flows), "findings": found,
+                          "endpoints": apimap.endpoints(flows, ids)}, indent=2))
+    else:
+        print(f"{path}: {len(flows)} requests, {len(found)} findings")
+        for x in found:
+            print(f"{x['severity']:<7}{x['host']}  {x['title']}" + (f" [{x['detail']}]" if x["detail"] else "")
+                  + f"  ({x['count']} requests)" + ("  dismissed" if x["dismissed"] else ""))
+    limit = findings.ORDER.get(fail_on or "")
+    if fail_on and limit is None:
+        fail(f"--fail-on must be one of {', '.join(findings.ORDER)}.")
+    return 1 if limit is not None and any(findings.ORDER[x["severity"]] <= limit and not x["dismissed"] for x in found) else 0
+
+
 def main():
     if "--version" in sys.argv:
         print(f"tls-peek {VERSION}")
         return
     stop_with_parent()
-    flags_with_value = {"--parent", "--port", "--home-port"}
+    flags_with_value = {"--parent", "--port", "--home-port", "--fail-on"}
     args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in flags_with_value]
     cmd = args[0] if args else "home"
     if cmd.lower().endswith(".mitm"):
         open_session(cmd)
+    elif cmd == "report" and len(args) > 1:
+        sys.exit(report(args[1], flag("--fail-on")))
     elif cmd == "open":
         open_session(args[1] if len(args) > 1 else "")
     elif cmd == "home":
