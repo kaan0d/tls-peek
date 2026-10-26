@@ -16,7 +16,9 @@ if (ids.length < 10) throw new Error(`only ${ids.length} rows listed`);
 
 let tabs = 0;
 for (const id of ids) {
+  const loaded = page.waitForResponse((r) => r.url().endsWith(`/api/flow/${id}`));  // tabs depend on the flow kind
   await page.click(`tr[data-id="${id}"]`);
+  await loaded;
   await page.waitForSelector("#detail .tab");
   for (const key of await page.$$eval("#detail .tab", (t) => t.map((b) => b.dataset.tab))) {
     await page.click(`#detail .tab[data-tab="${key}"]`);
