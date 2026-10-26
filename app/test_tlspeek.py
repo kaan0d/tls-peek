@@ -174,6 +174,13 @@ for want in (("cert-self-signed", ""), ("weak-cipher", "RC4-SHA"),
              ("rate-limited", "Retry-After: 7"), ("beacon", "GET /poll: 6 calls every 5.0s")):
     assert want in kinds, (want, sorted(kinds))
 assert any(x["check"] == "cert-name-mismatch" for x in got)
+ws = tflow.twebsocketflow()
+ws.websocket.messages = [type(ws.websocket.messages[0])(1, True, b'{"password": "p", "mail": "a@b.co"}'),
+                         type(ws.websocket.messages[0])(1, False, ('{"t": "%s"}' % jwt({"alg": "none"}, {"x": 1})).encode())]
+got = findings.check([ws], {ws.id: 0})
+kinds = {(x["check"], x["detail"]) for x in got}
+for want in (("secret-in-websocket", "sent: password"), ("pii-email", "in websocket, sent"), ("jwt-none", "in websocket, received")):
+    assert want in kinds, (want, sorted(kinds))
 q = tflow.tudpflow()
 q.messages[0].content = bytes.fromhex("c300000001")
 q.server_conn.address, q.server_conn.sni = ("quic.example", 443), None

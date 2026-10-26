@@ -67,6 +67,8 @@ CHECKS = {
               "The same URL was called again within a minute of a 5xx or 429. Check that the program backs off."),
     "quic": ("info", "HTTP/3 (QUIC) traffic, not decrypted",
              "The program talks QUIC over UDP 443. tls-peek lists these streams but cannot read them; blocking UDP 443 makes most programs fall back to HTTPS, which it can."),
+    "secret-in-websocket": ("medium", "Password or secret in a WebSocket message",
+                            "A message field holds a password or secret; the detail says which direction it travelled."),
     "server-error": ("info", "Server error (5xx)", "The server failed to handle the request; the body may explain why."),
     "basic-auth": ("medium", "HTTP Basic credentials",
                    "Username and password are only Base64 encoded and sent with every request."),
@@ -98,10 +100,12 @@ def jwt_parts(token):
 
 def body_pairs(msg):
     """(name, value) of the fields with a non-empty value in a JSON or form body."""
-    text = body_text(msg)
+    return text_pairs(body_text(msg), msg.headers.get("content-type", ""))
+
+
+def text_pairs(text, ctype):
     if not text:
         return []
-    ctype = msg.headers.get("content-type", "")
     pairs = []
 
     def walk(obj):
@@ -289,6 +293,25 @@ def check(flows, ids):
                 add("no-forward-secrecy", f, sc.cipher)
         if req.scheme == "https" and not local and not lan(req.pretty_host) and _is_ip(req.pretty_host):
             add("ip-literal", f, req.pretty_host)
+        for m in (f.websocket.messages[-500:] if f.websocket else []):
+            if not m.is_text:
+                continue
+            way = "sent" if m.from_client else "received"
+            for token in set(JWT.findall(m.text)):
+                head, body = jwt_parts(token)
+                if isinstance(head, dict) and isinstance(body, dict):
+                    if str(head.get("alg", "")).lower() == "none":
+                        add("jwt-none", f, f"in websocket, {way}")
+                    if "exp" not in body:
+                        add("jwt-no-exp", f, f"in websocket, {way}")
+            pairs = text_pairs(m.text, "json")
+            leaked = sorted({k for k, _ in pairs if STRONG.search(k)})
+            if leaked:
+                add("secret-in-websocket", f, f"{way}: {', '.join(leaked)}")
+            if any(EMAIL.search(v) for _, v in pairs):
+                add("pii-email", f, f"in websocket, {way}")
+            if any(luhn(d) for _, v in pairs for c in CARD.findall(v) if 13 <= len(d := re.sub(r"\D", "", c)) <= 19):
+                add("pii-card", f, f"in websocket, {way}")
         if not resp:
             continue
         h = h_ = resp.headers
