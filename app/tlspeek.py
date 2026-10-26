@@ -66,7 +66,7 @@ def export_har(session):
         return
     with open(src, "rb") as fo:
         # A flow saved again after a bookmark or note appears twice; the last copy wins.
-        flows = {f.id: f for f in io.FlowReader(fo).stream() if isinstance(f, http.HTTPFlow) and f.response}
+        flows = {f.id: f for f in io.FlowReader(fo).stream() if isinstance(f, http.HTTPFlow)}
     har = make_har(list(flows.values()))
     session.with_suffix(".har").write_text(json.dumps(har, indent=2), "utf-8")
     print(f"Saved redacted HAR: {session.with_suffix('.har')}")

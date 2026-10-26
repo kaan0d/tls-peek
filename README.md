@@ -23,9 +23,9 @@ administrator rights.
 - **Work with requests:** bookmarks and notes, edit and resend, duplicate, compare two as a diff (or a resend with its original), copy as cURL/PowerShell/Python/fetch/HTTPie or as the raw request.
 - **Send requests:** **Requests…** writes a new request or fills one from a pasted cURL command (bash or cmd form). Ticking **Save to captures** keeps it in `captures\saved-requests.json`, where the same menu sends it again or edits it first.
 - **API map:** requests grouped into endpoints (`/users/123` and `/users/octocat` become `/users/{id}` and `/users/{name}`) with calls, statuses, median time and JSON shapes; OpenAPI 3 download per host.
-- **Findings:** passive checks on captured traffic: credentials in URLs, plain HTTP, Basic auth, JWTs with alg none, no expiry or accepted after expiry, CORS with credentials, cookie flags, old TLS, expired certificates, missing HSTS, version headers.
+- **Findings:** passive checks on requests and responses: credentials in URLs and paths, passwords over HTTP or in response bodies, plain HTTP (loopback and LAN shown as info), Basic auth, JWTs with alg none or no expiry, CORS with credentials, cookie flags, stack traces and 5xx, old TLS, expired certificates, missing HSTS, version headers. Nothing is skipped quietly.
 - **Stats:** totals, median and p95 time, status and type counts, per-host table with IP, TLS and HTTP version, plus hosts that refused the certificate.
-- **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default.
+- **Export:** HAR or Postman collection, for all, filtered or selected requests, credentials masked by default. The file says how many values were masked and which fields; failed requests stay in it with status 0.
 - **Sessions:** every capture streams to `captures\session-<time>.mitm`; open it later in the same UI. **Open folder** on the start page shows them.
 - **CA hygiene:** fresh CA per session, untrusted and deleted on stop, on window close and at the next start.
 
@@ -97,8 +97,9 @@ rewrite rules (replace, header, fixed response) on the same calls, and duplicate
 - **Auto-stop needs an open tab.** A tab the browser puts to sleep (Edge sleeping tabs) counts as closed after `auto_stop_seconds`.
 - **Bodies over 5 MB** are streamed through and not stored or shown.
 - **The UI keeps the last 5000 requests.** The `.mitm` file keeps all of them.
-- **Redaction is by field name** (auth, token, password, key, user, code, ...), plus JWTs and
-  bearer tokens anywhere. Other free-text personal data is not masked. Check exports before you share them.
+- **Redaction is by field name** (auth, token, password, secret, api key, session id, ...), cookie values, secret-looking
+  path segments, plus JWTs, bearer tokens and well-known key formats anywhere. Plain fields such as `user`, `code` or `statusCode` stay readable.
+  Other free-text personal data is not masked. The UI always shows real values; only exports are masked. Check exports before you share them.
 - **Saved requests keep their tokens and cookies** as written, in plain text. Keep `captures\` private.
 - **WebSocket, TCP, UDP and DNS flows** can be viewed but not resent, intercepted or rewritten. Only the last 1000 WebSocket and 200 TCP or UDP messages are shown.
 - **Held traffic makes the program wait.** Some programs give up after their own timeout; release quickly. Binary or very large bodies are sent on unchanged.

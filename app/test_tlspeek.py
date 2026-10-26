@@ -70,6 +70,30 @@ for secret in ("QTOKEN", "HTOKEN", "alice", "PW", '"K"', "SID", "SIGJWT", "HDRTO
 entry = json.loads(har)["log"]["entries"][0]
 assert "page=2" in entry["request"]["url"] and '"n": 1' in entry["request"]["postData"]["text"]
 assert "KeepMe/1.0" in har
+
+# ordinary fields stay readable, secrets in every place go, and the file says what it did
+tricky = tflow.tflow(
+    req=tutils.treq(method=b"POST", path=b"/reset/tok9f8e7d6c5b4a3210abcd?zip_code=123&sort_key=n&page=2",
+                    headers=[(b"content-type", b"text/plain"), (b"cookie", b"sid=CKVAL; theme=dark")],
+                    content=b"password=PLAIN1&card=4111"),
+    resp=tutils.tresp(headers=[(b"content-type", b"application/json"), (b"set-cookie", b"sid=SETVAL; Path=/; Secure; HttpOnly"),
+                               (b"access-control-allow-credentials", b"true")],
+                      content=json.dumps({"statusCode": 200, "error": {"code": "NOT_FOUND"}, "user": {"id": 7, "email": "x@y.z"},
+                                          "access_tokens": ["TKA1", "TKB2"], "echo": json.dumps({"token": "NESTED"})}).encode()))
+xml = tflow.tflow(req=tutils.treq(headers=[(b"content-type", b"application/xml")], content=b"<a><password>XMLPW</password><n>5</n></a>"),
+                  resp=tutils.tresp())
+failed = tflow.tflow(err=True)
+har = export.make_har([tricky, xml, failed])
+text = json.dumps(har)
+for secret in ("tok9f8e7d6c5b4a3210abcd", "PLAIN1", "CKVAL", "SETVAL", "TKA1", "TKB2", "NESTED", "XMLPW"):
+    assert secret not in text, f"{secret} leaked"
+for kept in ("zip_code=123", "sort_key=n", "NOT_FOUND", "x@y.z", "theme=***", "Secure", "HttpOnly"):
+    assert kept in text, f"{kept} was masked"
+body = json.loads(har["log"]["entries"][0]["response"]["content"]["text"])
+assert body["statusCode"] == 200 and body["user"] == {"id": 7, "email": "x@y.z"}, body  # plain data stays readable
+assert len(har["log"]["entries"]) == 3 and "no response" in har["log"]["entries"][2]["comment"], "failed requests stay in the HAR"
+assert har["log"]["comment"].startswith("tls-peek: masked ") and "password" in har["log"]["comment"], har["log"]["comment"]
+assert "not masked" in export.make_har([tricky], mask=False)["log"]["comment"]
 print("redaction ok")
 
 # --- findings: passive checks ---
@@ -101,9 +125,30 @@ for key in ("plain-http", "secret-in-url", "basic-auth", "jwt-none", "jwt-no-exp
 for key in ("cors-credentials", "jwt-expired-accepted", "no-hsts"):
     assert (key, "shop.example.com") in by, key
 assert by[("secret-in-url", "api.example.com")]["detail"] == "access_token"
-assert by[("cookie-flags", "api.example.com")]["detail"] == "sid: no HttpOnly, SameSite"
+assert by[("cookie-flags", "api.example.com")]["detail"] == "sid: no Secure, HttpOnly, SameSite"  # over plain HTTP too: that is where Secure matters most
 assert by[("cookie-flags", "shop.example.com")]["detail"] == "__Secure-x: no Secure"  # the name is not the flag
 assert got[0]["severity"] == "high"
+
+# transparency: response side, paths, loopback and LAN are all reported, nothing is skipped quietly
+leaky = tflow.tflow(
+    req=tutils.treq(scheme=b"http", host=b"127.0.0.1", port=80, path=b"/reset/tok9f8e7d6c5b4a3210abcd?user=42&code=7&sort_key=n",
+                    method=b"POST", headers=[(b"content-type", b"application/json")], content=b'{"password": "hunter2"}'),
+    resp=tutils.tresp(status_code=500, headers=[(b"content-type", b"application/json"), (b"server", b"a/1.0"), (b"server", b"b/2.0"),
+                                                 (b"access-control-allow-origin", b"*"), (b"access-control-allow-credentials", b"true")],
+                      content=json.dumps({"access_token": jwt({"alg": "none"}, {"sub": "u"}), "password": "p1",
+                                          "trace": "Traceback (most recent call last)"}).encode()))
+lan = tflow.tflow(req=tutils.treq(scheme=b"http", host=b"192.168.1.20", port=80, path=b"/"), resp=tutils.tresp())
+got = findings.check([leaky, lan], {leaky.id: 0, lan.id: 1})
+kinds = {(x["check"], x["host"], x["detail"]) for x in got}
+for want in (("plain-http-local", "127.0.0.1", ""), ("plain-http-lan", "192.168.1.20", ""), ("secret-in-path", "127.0.0.1", "tok9f8…"),
+             ("jwt-none", "127.0.0.1", "in response"), ("secret-in-response", "127.0.0.1", "password"),
+             ("error-leak", "127.0.0.1", ""), ("server-error", "127.0.0.1", "500"), ("cors-credentials", "127.0.0.1", "* with credentials"),
+             ("server-version", "127.0.0.1", "server: a/1.0"), ("server-version", "127.0.0.1", "server: b/2.0")):
+    assert want in kinds, (want, sorted(kinds))
+assert not any(x["check"] in ("secret-in-url", "password-over-http") for x in got), "user, code, sort_key are data; loopback is not the network"
+lan_login = tflow.tflow(req=tutils.treq(scheme=b"http", host=b"example.org", port=80, method=b"POST",
+                                        headers=[(b"content-type", b"application/x-www-form-urlencoded")], content=b"name=a&password=b"))
+assert any(x["check"] == "password-over-http" for x in findings.check([lan_login], {lan_login.id: 0}))
 print("findings ok")
 
 # --- API map and OpenAPI ---

@@ -601,7 +601,7 @@ class TlsPeek:
         flows = [f for f in (list(self.flows) if ids is None else map(self.get, ids)) if f is not None and f.type == "http"]
         if fmt == "postman":
             return make_postman(flows, mask)
-        return make_har([f for f in flows if f.response], mask)
+        return make_har(flows, mask)
 
 
 def make_handler(addon):
@@ -736,7 +736,9 @@ def make_handler(addon):
                     addon.mark(int(body["id"]), body.get("marked"), body.get("note"))
                     return self.send(200, {})
                 if self.path == "/api/export":
-                    fmt = "postman" if body.get("format") == "postman" else "har"
+                    fmt = body.get("format", "har")
+                    if fmt not in ("har", "postman"):
+                        return self.send(400, {"error": f"unknown format {fmt!r}: use har or postman"})
                     data = addon.export(fmt, body.get("ids"), body.get("mask", True) is not False)
                     name = f'tlspeek-{time.strftime("%Y%m%d-%H%M%S")}' + (".postman_collection.json" if fmt == "postman" else ".har")
                     return self.send(200, data, headers=[("Content-Disposition", f'attachment; filename="{name}"')])
