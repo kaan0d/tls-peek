@@ -19,7 +19,16 @@ export const S = {
   applyError: "",    // shown in the status line until the next successful change
   rejected: [],      // hosts that refused the capture certificate
   file: false,       // viewing a saved session: nothing can be changed live
+  findings: [],      // last result of /api/findings, for the badge and the per-request chips
 };
+
+export function toast(text, ms = 7000) {  // a short note that fades by itself; screen readers get it as a status
+  document.querySelector(".toast")?.remove();
+  const el = Object.assign(document.createElement("div"), { className: "toast", textContent: text });
+  el.setAttribute("role", "status");
+  document.body.append(el);
+  setTimeout(() => el.remove(), ms);
+}
 
 export async function api(path, opts) {
   const r = await fetch(path, opts);

@@ -1,5 +1,5 @@
 // Export dialog: HAR or Postman, for all, shown or picked requests.
-import { $, S } from "./core.js";
+import { $, S, toast } from "./core.js";
 import { picked, visible } from "./list.js";
 
 $("#export").addEventListener("click", () => {
@@ -22,8 +22,13 @@ $("#ex-go").addEventListener("click", async () => {
     body: JSON.stringify({ format, ids, mask: $("#ex-mask").checked }) });
   if (!r.ok) { $("#ex-error").textContent = "Export failed."; return; }
   const name = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "")?.[1] || "tlspeek-export.json";
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await r.blob()), download: name });
+  const blob = await r.blob();
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
   a.click();
   URL.revokeObjectURL(a.href);
   $("#export-dlg").close();
+  try {  // the file says what was masked; say it here too
+    const doc = JSON.parse(await blob.text());
+    toast(`Saved ${name}. ${doc.log?.comment || doc.info?.description || ""}`);
+  } catch { toast(`Saved ${name}.`); }
 });

@@ -42,6 +42,19 @@ await page.click(".finding .dismiss");  // dismiss moves a finding to the greyed
 await page.waitForFunction((n) => document.querySelectorAll(".finding.dismissed").length === n + 1, before);
 await page.click(".finding.dismissed .dismiss");
 await page.waitForFunction((n) => document.querySelectorAll(".finding.dismissed").length === n, before);
+await page.waitForSelector("#findings-badge:not([hidden])");  // the button says there is something before the panel is opened
+await page.click(`.finding .f-ids button[data-id]`);  // from a finding to its request: the request lists the finding as a chip
+await page.waitForSelector("#detail .fchip");
+await page.click("#findings-btn");
+await page.click(".tile[data-sev=high]");  // a severity tile filters the list
+await page.waitForFunction(() => [...document.querySelectorAll(".finding:not(.dismissed) .sev")].every((e) => e.textContent === "high"));
+await page.click(".tile[data-sev=high]");
+await page.click("#stats-btn");  // the host table scrolls inside its box instead of running off the panel
+await page.waitForSelector(".scroll-x");
+if (await page.$eval("#detail", (d) => d.scrollWidth > d.clientWidth + 1)) throw new Error("stats panel overflows sideways");
+await page.click("#export");  // the export says what it masked
+await page.click("#ex-go");
+await page.waitForSelector('.toast:has-text("masked")');
 await page.waitForTimeout(500);  // late fetches (Raw tab) finish
 await browser.close();
 if (errors.length) throw new Error(`script errors:\n${errors.join("\n")}`);

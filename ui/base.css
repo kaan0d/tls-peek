@@ -1,17 +1,27 @@
-/* Colours and resets shared by the start page and the capture UI. */
+/* Colours and resets shared by the start page and the capture UI.
+   Neutrals are tinted toward the accent hue (255) so greys feel like one family; severity colours share
+   one lightness per theme so no level shouts louder than its meaning. */
 :root {
-  --bg: #f6f7f9; --panel: #fff; --line: #e3e6ea; --text: #1d2228; --muted: #6b7480;
-  --accent: #2f6fdf; --ok: #1f8a4c; --warn: #b7791f; --bad: #c43d3d; --sel: #e8f0fd;
-  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --bg: oklch(97.4% 0.004 255); --panel: oklch(99.4% 0.002 255); --line: oklch(91.5% 0.006 255);
+  --text: oklch(25% 0.014 255); --muted: oklch(52% 0.016 255);
+  --accent: oklch(54% 0.19 262); --ok: oklch(55% 0.13 155); --warn: oklch(60% 0.125 72); --bad: oklch(54% 0.18 25);
+  --violet: oklch(58% 0.14 300); --sel: oklch(94.6% 0.03 262);
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  --radius: 6px; --ease: cubic-bezier(.2, .7, .2, 1);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15181c; --panel: #1c2026; --line: #2c323a; --text: #e3e7ec; --muted: #8b95a1;
-    --accent: #6c9ef5; --ok: #4cc283; --warn: #e0a84a; --bad: #ef6b6b; --sel: #24324a;
+    --bg: oklch(19% 0.01 255); --panel: oklch(22.5% 0.011 255); --line: oklch(31% 0.013 255);
+    --text: oklch(92% 0.006 255); --muted: oklch(67% 0.015 255);
+    --accent: oklch(72% 0.13 262); --ok: oklch(73% 0.14 155); --warn: oklch(78% 0.125 80); --bad: oklch(71% 0.15 25);
+    --violet: oklch(72% 0.12 300); --sel: oklch(30% 0.045 262);
   }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); }
+button { transition: border-color .12s var(--ease), background-color .12s var(--ease), color .12s var(--ease); }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

@@ -42,14 +42,14 @@ export function renderStats() {
     <h3>Status</h3><div class="headers">${kv(Object.entries(groups).filter(([, n]) => n).map(([k, n]) => [k, String(n)])) || "<i>none</i>"}</div>
     <h3>Types</h3><div class="headers">${kv([...types].sort((a, b) => b[1] - a[1]).map(([k, n]) => [TYPES.find(([v]) => v === k)[1], String(n)]))}</div>
     <h3>Hosts</h3>
-    <table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num" title="Median request time">Median</th><th class="num" title="95th percentile request time">p95</th><th class="num" title="Median time to first byte: how long the server thought about it">Wait</th><th>IP</th><th>TLS</th><th>HTTP</th></tr></thead>
+    <div class="scroll-x"><table class="stats"><thead><tr><th>Host</th><th class="num">Requests</th><th class="num">Errors</th><th class="num">Received</th><th class="num" title="Median request time">Median</th><th class="num" title="95th percentile request time">p95</th><th class="num" title="Median time to first byte: how long the server thought about it">Wait</th><th>IP</th><th>TLS</th><th>HTTP</th></tr></thead>
     <tbody>${[...hosts.values()].sort((a, b) => b.n - a.n).map((h) => `<tr data-host="${esc(h.host)}" title="Show only this host">
       <td>${esc(h.host)}</td><td class="num">${h.n}</td><td class="num ${h.err ? "err" : ""}">${h.err}</td>
       <td class="num">${fmtSize(h.bytes)}</td><td class="num">${show(quantile(h.ms, 0.5))}</td><td class="num">${show(quantile(h.ms, 0.95))}</td><td class="num">${show(quantile(h.wait, 0.5))}</td>
       <td class="mono" title="${esc([...h.ips].join(", "))}">${esc([...h.ips][0] || "")}${h.ips.size > 1 ? ` +${h.ips.size - 1}` : ""}</td>
       <td>${esc([...h.tls].join(", "))}</td><td>${esc([...h.http].join(", "))}</td></tr>`).join("")}
     ${S.rejected.filter((r) => !hosts.has(r.host)).map((r) => `<tr class="rejected" title="No traffic decrypted: the program refused the capture certificate">
-      <td>${esc(r.host)}</td><td colspan="9" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table>`;
+      <td>${esc(r.host)}</td><td colspan="9" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table></div>`;
   $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;

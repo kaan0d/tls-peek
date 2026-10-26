@@ -11,7 +11,7 @@
 </head>
 <body>
 <header>
-  <h1>tls-peek</h1>
+  <h1><img src="ui/icon.svg" alt="">tls-peek</h1>
   <div class="field live-only">
     <label for="program-btn">Program</label>
     <button id="program-btn" type="button"><span>Pick program…</span></button>
@@ -31,7 +31,7 @@
   <span class="spacer"></span>
   <button id="compose-btn" type="button" title="Write a new request, paste a cURL command, or send a saved request">Requests…</button>
   <button id="api-btn" type="button" title="Endpoints grouped from the captured requests, with an OpenAPI download">API map</button>
-  <button id="findings-btn" type="button" title="Passive security checks on the captured traffic">Findings</button>
+  <button id="findings-btn" type="button" title="Passive security checks on the captured traffic">Findings<span id="findings-badge" class="badge" hidden></span></button>
   <button id="stats-btn" type="button" title="Counts, sizes and timings for the requests shown">Stats</button>
   <button id="clear" type="button" title="Hide requests captured so far">Clear</button>
   <button id="export" type="button" title="Download requests as HAR or a Postman collection">Export…</button>

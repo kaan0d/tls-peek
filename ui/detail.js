@@ -82,6 +82,23 @@ function jwtHtml(texts) {
   }).join("");
 }
 
+// Server-sent events as one row per event: number, event name, data.
+function sseHtml(text) {
+  const events = text.split(/\r?\n\r?\n/).filter((b) => b.trim()).slice(-200).map((block) => {
+    const e = { id: "", name: "message", data: [] };
+    for (const line of block.split(/\r?\n/)) {
+      const i = line.indexOf(":");
+      if (i === 0) continue;  // a comment line: keep-alive
+      const [k, v] = i < 0 ? [line, ""] : [line.slice(0, i), line.slice(i + 1).replace(/^ /, "")];
+      if (k === "data") e.data.push(v); else if (k === "event") e.name = v; else if (k === "id") e.id = v;
+    }
+    return e;
+  });
+  if (!events.length) return "";
+  return `<div class="sse" role="table" aria-label="Server-sent events">${events.map((e, i) =>
+    `<div role="row"><span class="n">${esc(e.id || i + 1)}</span><span class="ev">${esc(e.name)}</span><span class="dt">${esc(e.data.join("\n"))}</span></div>`).join("")}</div>`;
+}
+
 function messageHtml(msg, pending, part) {
   const s = S.current.summary;
   if (!msg) return `<div class="empty">${pending ? "Waiting for the response…" : "No response" + (s.error ? ": " + esc(s.error) : "") + "."}</div>`;
@@ -91,10 +108,12 @@ function messageHtml(msg, pending, part) {
   if (ctype.startsWith("image/")) preview = `<img class="preview" src="${src}" alt="Image preview">`;
   else if (ctype.includes("html")) preview = `<button type="button" class="html-preview" data-src="${src}" style="margin: 0 12px 8px">Preview page</button>`;
   const texts = [...msg.headers.map(([, v]) => v), msg.body, part === "request" ? s.url : ""];
+  const sse = part === "response" && ctype.includes("event-stream") && msg.body && !msg.body.startsWith("<body streamed") ? sseHtml(msg.body) : "";
   return `<h3>Headers</h3><div class="headers">${kv(msg.headers) || "<i>none</i>"}</div>${jwtHtml(texts)}
     <h3>Body ${msg.body ? `<select class="view-pick" data-part="${part}" aria-label="Decode body as">
       ${VIEWS.map((v) => `<option${v === bodyView ? " selected" : ""}>${v}</option>`).join("")}</select>` : ""}</h3>
-    ${preview}${msg.body ? `<pre class="body-out" data-part="${part}"></pre>` : `<div class="headers"><i>empty</i></div>`}`;
+    ${preview}${sse}${msg.body ? (sse ? `<details class="hexd" style="margin: 0 12px 12px"><summary>Raw stream</summary><pre class="body-out" data-part="${part}"></pre></details>`
+      : `<pre class="body-out" data-part="${part}"></pre>`) : `<div class="headers"><i>empty</i></div>`}`;
 }
 
 async function fillBody(pre) {
@@ -194,6 +213,27 @@ function wsHtml(msgs) {
   }).join("");
 }
 
+// The findings that name this request, so a problem is visible where the request is read.
+function findingChips(id) {
+  const mine = S.findings.filter((f) => !f.dismissed && f.ids.includes(id) && f.severity !== "info");
+  if (!mine.length) return "";
+  return `<div class="fchips" aria-label="Findings for this request">${mine.map((f) =>
+    `<button type="button" class="fchip sev-${f.severity}" title="${esc(f.why)}"><span class="sev">${f.severity}</span>${esc(f.title)}${f.detail ? ` <span class="muted">${esc(f.detail)}</span>` : ""}</button>`).join("")}</div>`;
+}
+
+// Findings arrive after the detail was drawn: swap just the chips, so nothing else in the panel moves.
+export function refreshChips() {
+  const s = S.current?.summary;
+  if (!s || S.panel || s.id !== S.selected || s.kind !== "http") return;
+  const old = document.querySelector("#detail .fchips"), html = findingChips(s.id);
+  if (old && !html) old.remove();
+  else if (html) {
+    const tpl = Object.assign(document.createElement("template"), { innerHTML: html }).content.firstElementChild;
+    if (old) old.replaceWith(tpl); else document.querySelector("#detail .url")?.after(tpl);
+    tpl.querySelectorAll(".fchip").forEach((b) => b.addEventListener("click", () => $("#findings-btn").click()));
+  }
+}
+
 function renderDetail() {
   const current = S.current, s = current.summary;
   let params = [];
@@ -231,7 +271,7 @@ function renderDetail() {
       </div></details>` : ""}
       <button id="close-detail" type="button" title="Close (Esc)">Close</button>
     </div>
-    <div class="url">${esc(s.method)} ${esc(s.url)}</div>${s.state === "held" ? holdHtml(s) : ""}
+    <div class="url">${esc(s.method)} ${esc(s.url)}</div>${findingChips(s.id)}${s.state === "held" ? holdHtml(s) : ""}
     <textarea id="note" rows="1" placeholder="Note (saved with the session)…" aria-label="Note"></textarea>${body}`;
   $("#note").value = s.note;
   let noteTimer;
@@ -243,6 +283,7 @@ function renderDetail() {
     tab = b.dataset.tab;
     if (tab === "stream") loadDetail(); else renderDetail();  // messages are not refreshed while another tab is shown
   }));
+  $("#detail").querySelectorAll(".fchip").forEach((b) => b.addEventListener("click", () => $("#findings-btn").click()));
   $("#detail").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.copy, b)));
   $("#resend-btn")?.addEventListener("click", () => openEditor({ id: s.id, method: s.method, url: s.url,
     headers: headerLines(current.request), body: current.request.body, keepBody: !current.request.editable }));
