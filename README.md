@@ -68,4 +68,4 @@ tlspeek.exe report FILE.mitm --fail-on high   findings for scripts; exit code 1 
 tlspeek.exe cleanup                remove the certificate after a crash
 ```
 
-Captures and `settings.json` live in `%LOCALAPPDATA%	ls-peek`. Captures contain credentials: keep them private.
+Captures and `settings.json` live in `%LOCALAPPDATA%\tls-peek`. Captures contain credentials: keep them private.
