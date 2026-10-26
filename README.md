@@ -32,7 +32,7 @@ administrator rights.
 ## Setup
 Download from [Releases](https://github.com/kaan0d/tls-peek/releases/latest), no Python needed. Two builds of the same program:
 - `tlspeek.exe`: one file. It unpacks itself to `%TEMP%` on every start.
-- `tlspeek-windows.zip`: a folder. Unzip anywhere and run `tlspeek	lspeek.exe`. Use it when antivirus flags the single exe (it does not unpack at start). Both builds keep their data in the same folder, see Usage.
+- `tlspeek-windows.zip`: a folder. Unzip anywhere and run `tlspeek\tlspeek.exe`. Use it when antivirus flags the single exe (it does not unpack at start). Both builds keep their data in the same folder, see Usage.
 
 To check a download, compare `certutil -hashfile <file> SHA256` with its line in `SHA256SUMS` from the same release.
 Antivirus may still warn (root certificate, WinDivert driver and admin rights look alike to malware heuristics): add an exclusion or report a false positive.
