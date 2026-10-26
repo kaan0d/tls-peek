@@ -14,6 +14,7 @@ LOCAL = ("localhost", "127.0.0.1", "::1")
 STRONG = re.compile(r"pass|secret|pwd|private", re.I)  # field names whose value is a password, not just a token
 ERROR_TEXT = re.compile(r"Traceback \(most recent|SQLSTATE|You have an error in your SQL|ORA-\d{5}|Exception in thread"
                         r"|at [\w.$]+\([\w.]+:\d+\)|stack ?trace|Fatal error:.*on line \d+", re.I)
+WEAK_CIPHER = re.compile(r"RC4|3DES|DES-CBC|NULL|EXPORT|MD5|anon", re.I)
 ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
 CHECKS = {
@@ -35,6 +36,23 @@ CHECKS = {
                            "The server sends back a field that holds a password or secret. Check that it must leave the server."),
     "error-leak": ("medium", "Stack trace or database error in a response",
                    "Error text shows internal paths, queries or software and helps an attacker."),
+    "cert-self-signed": ("medium", "Self-signed server certificate",
+                         "No certificate authority vouches for this server, so the connection can be intercepted without a warning if trust is skipped."),
+    "cert-name-mismatch": ("medium", "Certificate does not name this host",
+                           "The server certificate's names do not include the host that was requested."),
+    "cert-expiring": ("low", "Server certificate expires within 30 days", "The service will break or warn when it runs out."),
+    "cert-weak-key": ("medium", "Weak certificate key", "RSA keys under 2048 bits can be broken with modest resources."),
+    "weak-cipher": ("medium", "Weak TLS cipher", "This cipher suite is broken or deprecated."),
+    "no-forward-secrecy": ("low", "No forward secrecy",
+                           "Without an ephemeral key exchange, a stolen server key decrypts recorded traffic."),
+    "security-headers": ("info", "Security headers missing on an HTML page",
+                         "Content-Security-Policy, X-Content-Type-Options and frame protection limit what injected content can do."),
+    "rate-limited": ("info", "Rate limited (429)", "The server asked the caller to slow down; Retry-After says for how long."),
+    "proxy-auth": ("info", "Proxy authentication required (407)",
+                   "A proxy between this program and the server wants credentials; the program may not support it."),
+    "ip-literal": ("info", "Request to a bare IP address", "No host name to check a certificate against; unusual for normal services and common for malware and LAN devices."),
+    "beacon": ("low", "Requests at a regular interval",
+               "The same URL is called on a steady timer. Normal for polling and telemetry, also how malware checks in."),
     "server-error": ("info", "Server error (5xx)", "The server failed to handle the request; the body may explain why."),
     "basic-auth": ("medium", "HTTP Basic credentials",
                    "Username and password are only Base64 encoded and sent with every request."),
@@ -100,6 +118,40 @@ def lan(host):
         return False
 
 
+def name_matches(pattern, host):
+    """Certificate name against host, with a leading * standing for one label."""
+    if pattern.startswith("*."):
+        return host.count(".") == pattern.count(".") and host.endswith(pattern[1:])
+    return pattern == host
+
+
+def _is_ip(host):
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def beacons(flows, ids):
+    """Same URL called 5+ times at near-equal gaps of at least a second."""
+    calls = {}
+    for f in flows:
+        if f.type == "http" and f.id in ids:
+            calls.setdefault((f.request.method, f.request.pretty_host, f.request.path.split("?")[0]), []).append(f)
+    out = []
+    for (method, host, path), group in calls.items():
+        if len(group) < 5:
+            continue
+        times = sorted(f.request.timestamp_start for f in group)
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        mean = sum(gaps) / len(gaps)
+        if mean >= 1 and max(abs(g - mean) for g in gaps) <= mean * 0.2:
+            out.append({"check": "beacon", "host": host, "detail": f"{method} {path}: {len(group)} calls every {mean:.1f}s",
+                        "ids": [ids[f.id] for f in group]})
+    return out
+
+
 def check(flows, ids):
     """Findings for HTTP flows; ids maps flow.id to the UI id. Grouped by check, host and detail."""
     found = {}
@@ -144,11 +196,42 @@ def check(flows, ids):
         sc = f.server_conn
         if sc and sc.tls_version in ("TLSv1", "TLSv1.1", "SSLv3"):
             add("old-tls", f, sc.tls_version)
-        if sc and sc.certificate_list and sc.certificate_list[0].notafter.timestamp() < now:
-            add("cert-expired", f)
+        if sc and sc.certificate_list:
+            leaf = sc.certificate_list[0]
+            left = leaf.notafter.timestamp() - now
+            if left < 0:
+                add("cert-expired", f)
+            elif left < 30 * 86400:
+                add("cert-expiring", f, f"{int(left // 86400)} days left")
+            if leaf.issuer == leaf.subject and len(sc.certificate_list) == 1:
+                add("cert-self-signed", f)
+            names = [str(n.value).lower() for n in leaf.altnames] or [(leaf.cn or "").lower()]
+            if not any(name_matches(n, req.pretty_host.lower()) for n in names) and not lan(req.pretty_host):
+                add("cert-name-mismatch", f, ", ".join(names[:3]))
+            kind, bits = leaf.keyinfo
+            if kind == "RSA" and bits < 2048:
+                add("cert-weak-key", f, f"RSA {bits}")
+        if sc and sc.cipher:
+            if WEAK_CIPHER.search(sc.cipher):
+                add("weak-cipher", f, sc.cipher)
+            elif sc.tls_version != "TLSv1.3" and not sc.cipher.upper().startswith(("ECDHE", "DHE", "EDH", "TLS_ECDHE", "TLS_DHE")):
+                add("no-forward-secrecy", f, sc.cipher)
+        if req.scheme == "https" and not local and not lan(req.pretty_host) and _is_ip(req.pretty_host):
+            add("ip-literal", f, req.pretty_host)
         if not resp:
             continue
         h = resp.headers
+        if resp.status_code == 429:
+            add("rate-limited", f, "Retry-After: " + resp.headers.get("retry-after", "not sent"))
+        elif resp.status_code == 407:
+            add("proxy-auth", f)
+        if "text/html" in resp.headers.get("content-type", "") and resp.status_code == 200:
+            missing = [label for label, ok in (("Content-Security-Policy", "content-security-policy" in resp.headers),
+                                               ("X-Content-Type-Options", "x-content-type-options" in resp.headers),
+                                               ("frame protection", "x-frame-options" in resp.headers
+                                                or "frame-ancestors" in resp.headers.get("content-security-policy", ""))) if not ok]
+            if missing:
+                add("security-headers", f, "missing " + ", ".join(missing))
         if resp.status_code >= 500:
             add("server-error", f, str(resp.status_code))
         if ERROR_TEXT.search(body_text(resp) or ""):
@@ -180,7 +263,7 @@ def check(flows, ids):
                     add("server-version", f, f"{name}: {value}")
 
     out = []
-    for e in found.values():
+    for e in [*found.values(), *beacons(flows, ids)]:
         severity, title, why = CHECKS[e["check"]]
         out.append({**e, "severity": severity, "title": title, "why": why})
     return sorted(out, key=lambda e: (ORDER[e["severity"]], e["check"], e["host"], e["detail"]))

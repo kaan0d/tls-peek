@@ -149,6 +149,28 @@ assert not any(x["check"] in ("secret-in-url", "password-over-http") for x in go
 lan_login = tflow.tflow(req=tutils.treq(scheme=b"http", host=b"example.org", port=80, method=b"POST",
                                         headers=[(b"content-type", b"application/x-www-form-urlencoded")], content=b"name=a&password=b"))
 assert any(x["check"] == "password-over-http" for x in findings.check([lan_login], {lan_login.id: 0}))
+
+# certificates, ciphers, missing headers, rate limits and timers
+from mitmproxy import certs
+_, ca_cert = certs.create_ca("tls-peek test", "tls-peek", 2048)
+page = tflow.tflow(req=tutils.treq(scheme=b"https", host=b"shop.example.org", port=443, path=b"/"),
+                   resp=tutils.tresp(headers=[(b"content-type", b"text/html")]))
+page.server_conn.certificate_list = [certs.Cert(ca_cert)]
+page.server_conn.cipher, page.server_conn.tls_version = "RC4-SHA", "TLSv1.2"
+limited = tflow.tflow(req=tutils.treq(path=b"/q"), resp=tutils.tresp(status_code=429, headers=[(b"retry-after", b"7")]))
+ticks = []
+for n in range(6):
+    t = tflow.tflow(req=tutils.treq(path=b"/poll?x=%d" % n), resp=tutils.tresp())
+    t.request.timestamp_start = 1000 + n * 5
+    ticks.append(t)
+burst = tflow.tflow(req=tutils.treq(path=b"/b"), resp=tutils.tresp())
+got = findings.check([page, limited, *ticks], {fl.id: i for i, fl in enumerate([page, limited, *ticks])})
+kinds = {(x["check"], x["detail"]) for x in got}
+for want in (("cert-self-signed", ""), ("weak-cipher", "RC4-SHA"),
+             ("security-headers", "missing Content-Security-Policy, X-Content-Type-Options, frame protection"),
+             ("rate-limited", "Retry-After: 7"), ("beacon", "GET /poll: 6 calls every 5.0s")):
+    assert want in kinds, (want, sorted(kinds))
+assert any(x["check"] == "cert-name-mismatch" for x in got)
 print("findings ok")
 
 # --- API map and OpenAPI ---
