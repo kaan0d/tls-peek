@@ -30,17 +30,30 @@ jobs:
         shell: bash
         run: sed -i "s/^VERSION = .*/VERSION = \"$(git describe --tags --always)\"/" app/version.py
       - run: python app\tlspeek.py --version
-      - run: pyinstaller --onefile --name tlspeek --icon app/icon.ico --hidden-import pystray._win32 --add-data "ui;ui" --add-data "app/addon.py;." app/tlspeek.py
+      - name: Version resource
+        shell: bash
+        run: |
+          ver=$(git describe --tags --always)
+          num=$(echo "$ver" | sed -E 's/^v?([0-9]+)\.([0-9]+)\.([0-9]+).*/\1, \2, \3, 0/;t;s/.*/0, 0, 0, 0/')
+          sed -i "s/@NUM@/$num/g;s/@VER@/$ver/g" app/version_info.txt
+      - name: Build exe and folder
+        shell: bash
+        run: |
+          common='--name tlspeek --icon app/icon.ico --version-file app/version_info.txt --hidden-import pystray._win32 --add-data ui;ui --add-data app/addon.py;. app/tlspeek.py'
+          pyinstaller --onefile $common
+          pyinstaller --onedir --distpath dist-dir --workpath build-dir $common
+          powershell Compress-Archive dist-dir/tlspeek dist/tlspeek-windows.zip
       - name: SHA-256
         shell: bash
-        run: sha256sum dist/tlspeek.exe | sed 's|dist/||' > dist/tlspeek.exe.sha256 && cat dist/tlspeek.exe.sha256
+        run: cd dist && sha256sum tlspeek.exe tlspeek-windows.zip > SHA256SUMS && cat SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: tlspeek-exe
+          name: tlspeek
           path: |
             dist/tlspeek.exe
-            dist/tlspeek.exe.sha256
+            dist/tlspeek-windows.zip
+            dist/SHA256SUMS
       - if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release create ${{ github.ref_name }} dist/tlspeek.exe dist/tlspeek.exe.sha256 --generate-notes
+        run: gh release create ${{ github.ref_name }} dist/tlspeek.exe dist/tlspeek-windows.zip dist/SHA256SUMS --notes-file .github/release-notes.md --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

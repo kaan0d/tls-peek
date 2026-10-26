@@ -7,3 +7,5 @@ build/
 dist/
 *.spec
 settings.json
+dist-dir/
+build-dir/
