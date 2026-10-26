@@ -227,7 +227,7 @@ export function render() {
     },
     type: (f) => `<td class="muted">${esc(f.type)}</td>`,
     size: (f) => `<td class="num muted">${f.state === "done" ? fmtSize(f.size) : ""}</td>`,
-    ms: (f) => `<td class="num muted">${fmtMs(f.ms)}</td>`,
+    ms: (f) => `<td class="num muted"${f.held_ms ? ` title="Not counted: held ${fmtMs(f.held_ms)} while you edited it"` : ""}>${fmtMs(f.ms)}${f.held_ms ? " ⏸" : ""}</td>`,
     timeline: (f) => `<td>${timelineCell(f, t0, span)}</td>`,
   };
   const cols = shownCols();

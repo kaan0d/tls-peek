@@ -193,6 +193,24 @@ function appendStream(d) {
   return true;
 }
 
+// HTTPS and SVCB answers say how to reach a host before any connection exists: ALPN list, ECH, address hints.
+function svcbHtml(answers) {
+  const recs = answers.filter((a) => (a.type === "HTTPS" || a.type === "SVCB") && a.data && typeof a.data === "object");
+  if (!recs.length) return "";
+  const hex = /\\x[0-9a-fA-F]{2}/;
+  return `<h3>Service binding <small>how the host asks to be reached</small></h3>` + recs.map((a) => {
+    const d = a.data, alpn = String(d.alpn ?? "").split(new RegExp(hex.source, "g")).filter(Boolean);
+    const hints = ["ipv4hint", "ipv6hint"].filter((k) => d[k]).map((k) => `${k.slice(0, 4)}: ${d[k]}`);
+    return `<div class="headers">${kv([
+      ["Host", a.name], ["Priority", d.priority === 0 ? "0 (alias: follow the target)" : String(d.priority)],
+      ["Target", d.target_name || "same name"],
+      ["ALPN", alpn.length ? alpn.join(", ") + (alpn.includes("h3") ? " (HTTP/3 over QUIC offered)" : "") : "not given (HTTP/1.1)"],
+      ["Encrypted Client Hello", d.ech ? "yes: the server name in the handshake is encrypted" : "no"],
+      ...(d.port ? [["Port", String(d.port)]] : []), ...(hints.length ? [["Address hints", hints.join("; ")]] : []),
+    ])}</div>`;
+  }).join("");
+}
+
 function dnsHtml(d) {
   const q = d.query, r = d.response;
   const rows = (list) => list.length ? `<table class="stats"><thead><tr><th>Name</th><th>Type</th><th class="num">TTL</th><th>Data</th></tr></thead><tbody>
@@ -200,6 +218,7 @@ function dnsHtml(d) {
   const flags = (m) => ["authoritative_answer", "truncation", "recursion_desired", "recursion_available"].filter((k) => m[k]).map((k) => k.replace(/_/g, " ")).join(", ");
   return `<h3>Question</h3><div class="headers">${kv(q.questions.map((x) => [x.type, x.name]))}${kv([["ID", String(q.id)], ["Flags", flags(q) || "none"]])}</div>
     ${r ? `<h3>Answer <small>${esc(r.response_code)}</small></h3>${rows(r.answers)}
+    ${svcbHtml([...r.answers, ...r.additionals])}
     ${r.authorities.length ? `<h3>Authority</h3>${rows(r.authorities)}` : ""}${r.additionals.length ? `<h3>Additional</h3>${rows(r.additionals)}` : ""}
     <div class="headers">${kv([["Flags", flags(r) || "none"]])}</div>` : `<div class="empty">No answer yet.</div>`}`;
 }

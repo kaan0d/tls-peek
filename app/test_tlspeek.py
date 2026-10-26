@@ -272,6 +272,9 @@ hdr = tflow.tflow(req=tutils.treq(path=b"/p?trace=URLNEEDLE"), resp=tutils.tresp
 finder = addon.TlsPeek()
 finder.flows, finder.ids = [hdr], {hdr.id: 0}
 assert finder.search("urlneedle") == [0] and finder.search("hdrneedle") == [0], "search covers URL and headers"
+import observe
+assert observe.explain("[WinError 10061] Uzaktaki bilgisayar reddetti") == "[WinError 10061] Uzaktaki bilgisayar reddetti (connection refused: nothing listens on that port)"
+assert observe.explain("plain failure") == "plain failure" and observe.explain(None) is None
 print("unreadable flow ok")
 
 # The event loop changes flows while the UI thread lists them.
@@ -782,6 +785,7 @@ try:
     assert results["edited"] == "fake answer", results
     detail = call(f"/api/flow/{f['id']}")[1]
     assert detail["request"]["body"] == "changed" and detail["summary"]["edited"] == ["request", "response"], detail
+    assert detail["summary"]["held_ms"] >= 1000 and detail["summary"]["ms"] < detail["summary"]["held_ms"], detail["summary"]  # hold time is not server time
 
     t = threading.Thread(target=program_call, args=("dropped", b"x"))
     t.start()

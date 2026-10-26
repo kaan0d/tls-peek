@@ -305,6 +305,13 @@ class TlsPeek:
         if not r["enabled"] or not r[phase] or self.paused or flow.is_replay or not ctx.options.ui_port or not matches(r, flow):
             return
         flow.intercept()
+        flow.metadata["tlspeek_hold_at"] = time.time()
+
+    def end_hold(self, flow):
+        """Time spent held is the user's, not the server's: it is kept apart so request times stay honest."""
+        at = flow.metadata.pop("tlspeek_hold_at", None)
+        if at:
+            flow.metadata["tlspeek_held_s"] = flow.metadata.get("tlspeek_held_s", 0) + time.time() - at
 
     def set_intercept(self, rule):
         self.icpt = {
@@ -342,6 +349,7 @@ class TlsPeek:
                     msg.text = edits["body"]
                 f.metadata.setdefault("tlspeek_edited", []).append(phase)
             # kill() alone would leave the proxy waiting on the hold forever: release, then kill.
+            self.end_hold(f)
             f.resume()
             if drop:
                 f.kill()
@@ -354,6 +362,7 @@ class TlsPeek:
     def release_all(self):
         for f in list(self.flows):
             if f.intercepted:
+                self.end_hold(f)
                 f.resume()
                 self.touch(f, force=True)
 
@@ -412,7 +421,7 @@ class TlsPeek:
         base = {
             "id": self.ids[f.id],
             "kind": f.type,
-            "error": f.error.msg if f.error else None,
+            "error": observe.explain(f.error.msg) if f.error else None,
             "replay": bool(f.is_replay),
             "marked": bool(f.marked),
             "note": f.comment,
@@ -444,7 +453,8 @@ class TlsPeek:
             "state": state,
             "type": (r.headers.get("content-type", "") if r else "").split(";")[0],
             "size": self.size_of(f),
-            "ms": round((r.timestamp_end - f.request.timestamp_start) * 1000) if r and r.timestamp_end else None,
+            "ms": round((r.timestamp_end - f.request.timestamp_start - f.metadata.get("tlspeek_held_s", 0)) * 1000) if r and r.timestamp_end else None,
+            "held_ms": round(f.metadata.get("tlspeek_held_s", 0) * 1000),
             "ws": len(f.websocket.messages) if f.websocket else None,
             "held": ("response" if r else "request") if f.intercepted else None,
             "http": f.request.http_version,

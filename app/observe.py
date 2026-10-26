@@ -1,4 +1,5 @@
 """Connection, TLS and timing details of mitmproxy flows, for the Connection tab and the waterfall."""
+import re
 
 
 def ms(a, b):
@@ -99,6 +100,25 @@ def raw_fields(f):
             "label": "open" if f.live else "closed", "state": "error" if f.error else "pending" if f.live else "done",
             "size": sent + got, "type": f.type, "msgs": len(f.messages), "time": f.timestamp_start,
             "ms": ms(f.timestamp_start, last) if last else None, "sent": sent}
+
+
+# Windows and POSIX socket errors by number: the OS message is in the user's language, this one is not.
+SOCKET_ERRORS = {
+    10061: "connection refused: nothing listens on that port", 111: "connection refused: nothing listens on that port",
+    10060: "timed out: the host did not answer", 110: "timed out: the host did not answer",
+    11001: "name not found: DNS has no such host", 11004: "name found but has no address", -2: "name not found: DNS has no such host",
+    10054: "connection reset by the other side", 104: "connection reset by the other side",
+    10053: "connection aborted by this computer", 10051: "network unreachable", 10065: "no route to the host",
+    10013: "blocked by a permission or a firewall", 10048: "address already in use",
+}
+SOCKET_NUMBER = re.compile(r"(?:WinError|Errno) (-?\d+)")
+
+
+def explain(msg):
+    """The error text with a plain English reason added when it carries a socket error number."""
+    m = SOCKET_NUMBER.search(msg or "")
+    why = SOCKET_ERRORS.get(int(m[1])) if m else None
+    return f"{msg} ({why})" if why and why not in msg else msg
 
 
 def to_json_type(msg):
