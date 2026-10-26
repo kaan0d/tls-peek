@@ -264,6 +264,9 @@ class TlsPeek:
             if not r["enabled"] or r["phase"] != phase or not matches(r, flow):
                 continue
             applied += 1
+            what = {"respond": f"answered with {r['status']}", "header": f"{'set' if r['value'] else 'removed'} header {r['name']}"}.get(
+                r["action"], f"replaced '{r['find']}' with '{r['replace']}'")
+            flow.metadata.setdefault("tlspeek_rule_log", []).append(f"{what} ({phase})")
             if r["action"] == "respond":
                 flow.response = http.Response.make(r["status"], r["body"], {"content-type": r["type"]})
                 flow.metadata["tlspeek_answered"] = True
@@ -415,6 +418,7 @@ class TlsPeek:
             "note": f.comment,
             "edited": f.metadata.get("tlspeek_edited", []),
             "rules": f.metadata.get("tlspeek_rules", 0),
+            "rule_log": f.metadata.get("tlspeek_rule_log", []),
             "source": self.ids.get(f.metadata.get("tlspeek_source")),  # UI id of the flow this one resent
             "ip": f.server_conn.peername[0] if f.server_conn.peername else None,
             "tls": f.server_conn.tls_version,
@@ -510,7 +514,7 @@ class TlsPeek:
             return {"id": self.ids[f.id], "kind": f.type, "method": f.type.upper(), "url": "", "host": "", "info": "could not be read",
                     "time": f.timestamp_created, "status": None, "state": "error", "type": "", "size": 0, "ms": None,
                     "error": f"tls-peek could not read this flow: {e}", "replay": False, "marked": bool(f.marked),
-                    "note": f.comment, "edited": [], "rules": 0, "ip": None, "tls": None, "ws": None, "held": None,
+                    "note": f.comment, "edited": [], "rules": 0, "rule_log": [], "ip": None, "tls": None, "ws": None, "held": None,
                     "http": None, "phases": None}
 
     def size_of(self, f):

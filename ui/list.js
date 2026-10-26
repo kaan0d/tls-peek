@@ -222,7 +222,7 @@ export function render() {
       const tags = (f.replay ? `<span class="tag">${f.source != null ? "resent" : "sent"}</span>` : "") + (f.ws != null ? `<span class="tag">WS ${f.ws}</span>` : "")
         + (f.note ? `<span class="tag" title="${esc(f.note)}">note</span>` : "")
         + (f.edited.length ? `<span class="tag" title="Edited while held: ${f.edited.join(", ")}">edited</span>` : "")
-        + (f.rules ? `<span class="tag" title="Changed by ${f.rules === 1 ? "a rewrite rule" : f.rules + " rewrite rules"}">rule</span>` : "");
+        + (f.rules ? `<span class="tag" title="${esc(f.rule_log.join("\n"))}">rule</span>` : "");
       return `<td title="${esc(f.url)}">${tags}${esc(pathOf(f))}</td>`;
     },
     type: (f) => `<td class="muted">${esc(f.type)}</td>`,

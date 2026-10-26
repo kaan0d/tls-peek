@@ -60,6 +60,11 @@ CHECKS = {
     "pii-card": ("high", "Payment card number sent", "A value passes the card number checksum. Card data belongs only with a payment provider."),
     "identifier-sent": ("info", "Device or user identifier sent",
                         "Stable identifiers let a host recognise the same person or device across requests; this is how tracking works."),
+    "refused": ("info", "Request refused (401 or 403)", "The server did not accept the caller; the detail says whether any credentials were sent."),
+    "cors-preflight": ("low", "CORS preflight refused",
+                       "A browser would block the real request because the OPTIONS answer does not allow it."),
+    "retry": ("info", "Retried after a server error or rate limit",
+              "The same URL was called again within a minute of a 5xx or 429. Check that the program backs off."),
     "server-error": ("info", "Server error (5xx)", "The server failed to handle the request; the body may explain why."),
     "basic-auth": ("medium", "HTTP Basic credentials",
                    "Username and password are only Base64 encoded and sent with every request."),
@@ -173,6 +178,23 @@ def beacons(flows, ids):
     return out
 
 
+def retries(flows, ids):
+    """Same URL called again within a minute after a 5xx or 429."""
+    calls = {}
+    for f in flows:
+        if f.type == "http" and f.id in ids and f.response:
+            calls.setdefault((f.request.method, f.request.pretty_host, f.request.path.split("?")[0]), []).append(f)
+    out = []
+    for (method, host, path), group in calls.items():
+        group.sort(key=lambda f: f.request.timestamp_start)
+        again = [b for a, b in zip(group, group[1:])
+                 if (a.response.status_code >= 500 or a.response.status_code == 429) and b.request.timestamp_start - a.request.timestamp_start <= 60]
+        if again:
+            out.append({"check": "retry", "host": host, "detail": f"{method} {path}: {len(again)} retries",
+                        "ids": [ids[f.id] for f in again], "first": again[0].request.timestamp_start, "last": again[-1].request.timestamp_start})
+    return out
+
+
 def check(flows, ids):
     """Findings for HTTP flows; ids maps flow.id to the UI id. Grouped by check, host and detail."""
     found = {}
@@ -252,7 +274,21 @@ def check(flows, ids):
             add("ip-literal", f, req.pretty_host)
         if not resp:
             continue
-        h = resp.headers
+        h = h_ = resp.headers
+        if resp.status_code in (401, 403):
+            sent = [n for n in ("authorization", "cookie", "x-api-key") if n in req.headers]
+            add("refused", f, f"{resp.status_code}, " + (f"sent {', '.join(sent)}" if sent else "no credentials sent"))
+        if req.method == "OPTIONS" and "access-control-request-method" in req.headers:
+            allowed = {x.strip().lower() for x in h_.get("access-control-allow-headers", "").split(",")}
+            asked = {x.strip().lower() for x in req.headers.get("access-control-request-headers", "").split(",") if x.strip()}
+            methods = h_.get("access-control-allow-methods", "")
+            blocked = [] if "*" in allowed else sorted(asked - allowed)
+            if resp.status_code >= 400:
+                add("cors-preflight", f, f"status {resp.status_code}")
+            elif blocked:
+                add("cors-preflight", f, "headers not allowed: " + ", ".join(blocked))
+            elif methods and "*" not in methods and req.headers["access-control-request-method"].upper() not in methods.upper():
+                add("cors-preflight", f, "method not allowed: " + req.headers["access-control-request-method"])
         if resp.status_code == 429:
             add("rate-limited", f, "Retry-After: " + resp.headers.get("retry-after", "not sent"))
         elif resp.status_code == 407:
@@ -295,7 +331,7 @@ def check(flows, ids):
                     add("server-version", f, f"{name}: {value}")
 
     out = []
-    for e in [*found.values(), *beacons(flows, ids)]:
+    for e in [*found.values(), *beacons(flows, ids), *retries(flows, ids)]:
         severity, title, why = CHECKS[e["check"]]
         out.append({**e, "count": len(e["ids"]), "severity": severity, "title": title, "why": why})
     return sorted(out, key=lambda e: (ORDER[e["severity"]], e["check"], e["host"], e["detail"]))

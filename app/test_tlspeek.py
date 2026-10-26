@@ -173,6 +173,17 @@ for want in (("cert-self-signed", ""), ("weak-cipher", "RC4-SHA"),
              ("rate-limited", "Retry-After: 7"), ("beacon", "GET /poll: 6 calls every 5.0s")):
     assert want in kinds, (want, sorted(kinds))
 assert any(x["check"] == "cert-name-mismatch" for x in got)
+pre = tflow.tflow(req=tutils.treq(method=b"OPTIONS", path=b"/api", headers=[(b"access-control-request-method", b"POST"),
+                                                                              (b"access-control-request-headers", b"x-foo, content-type")]),
+                  resp=tutils.tresp(status_code=204, headers=[(b"access-control-allow-headers", b"content-type")]))
+nope = tflow.tflow(req=tutils.treq(path=b"/priv", headers=[(b"authorization", b"Bearer x")]), resp=tutils.tresp(status_code=403))
+fail1 = tflow.tflow(req=tutils.treq(path=b"/job"), resp=tutils.tresp(status_code=503))
+fail2 = tflow.tflow(req=tutils.treq(path=b"/job"), resp=tutils.tresp(status_code=200))
+fail2.request.timestamp_start = fail1.request.timestamp_start + 3
+got = findings.check([pre, nope, fail1, fail2], {fl.id: i for i, fl in enumerate([pre, nope, fail1, fail2])})
+kinds = {(x["check"], x["detail"]) for x in got}
+for want in (("cors-preflight", "headers not allowed: x-foo"), ("refused", "403, sent authorization"), ("retry", "GET /job: 1 retries")):
+    assert want in kinds, (want, sorted(kinds))
 pii = tflow.tflow(req=tutils.treq(path=b"/t?device_id=abc&n=1", method=b"POST", headers=[(b"content-type", b"application/json")],
                                   content=b'{"mail": "a.b@example.com", "pan": "4111 1111 1111 1111", "order": "1234567890123"}'),
                   resp=tutils.tresp())
@@ -794,7 +805,7 @@ try:
     program_call("rule", b"original")
     assert results["rule"] == "rewritten:CHANGEDinal", results
     last = call("/api/flows")[1]["flows"][-1]
-    assert last["rules"] == 3, last
+    assert last["rules"] == 3 and any("header x-added" in x for x in last["rule_log"]), last  # the list says which rules changed it
     assert ["x-added", "1"] in call(f"/api/flow/{last['id']}")[1]["response"]["headers"]
 
     post("/api/rules", {"rules": [{"action": "respond", "url": "/x", "type": "text/plain", "body": "mocked"}]})
