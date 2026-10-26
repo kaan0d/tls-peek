@@ -105,7 +105,7 @@ def raw_fields(f):
 # Windows and POSIX socket errors by number: the OS message is in the user's language, this one is not.
 SOCKET_ERRORS = {
     10061: "connection refused: nothing listens on that port", 111: "connection refused: nothing listens on that port",
-    10060: "timed out: the host did not answer", 110: "timed out: the host did not answer",
+    10060: "timed out: the host did not answer", 121: "timed out: the host did not answer", 110: "timed out: the host did not answer",
     11001: "name not found: DNS has no such host", 11004: "name found but has no address", -2: "name not found: DNS has no such host",
     10054: "connection reset by the other side", 104: "connection reset by the other side",
     10053: "connection aborted by this computer", 10051: "network unreachable", 10065: "no route to the host",

@@ -12,8 +12,10 @@ JWT = re.compile(r"eyJ[\w-]+\.eyJ[\w-]+\.[\w-]*")
 VERSION = re.compile(r"\d+\.\d+")
 LOCAL = ("localhost", "127.0.0.1", "::1")
 STRONG = re.compile(r"pass|secret|pwd|private", re.I)  # field names whose value is a password, not just a token
-ERROR_TEXT = re.compile(r"Traceback \(most recent|SQLSTATE|You have an error in your SQL|ORA-\d{5}|Exception in thread"
-                        r"|at [\w.$]+\([\w.]+:\d+\)|stack ?trace|Fatal error:.*on line \d+", re.I)
+ERROR_TEXT = re.compile(  # error pages only: a script that merely mentions stack traces must not match
+    r"Traceback \(most recent|SQLSTATE\[|You have an error in your SQL syntax|ORA-\d{5}|Exception in thread \""
+    r"|\bat [\w.$]+\([\w$]+\.(?:java|kt|cs|py|rb|php):\d+\)|\bat [\w.$<>]+ \((?:/|[A-Za-z]:\\)[^)\n]*\.js:\d+:\d+\)"
+    r"|Fatal error: .* on line \d+|Stack trace:\s*#0")
 WEAK_CIPHER = re.compile(r"RC4|3DES|DES-CBC|NULL|EXPORT|MD5|anon", re.I)
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 CARD = re.compile(r"(?<![\d.])(?:\d[ -]?){13,19}(?![\d.])")
@@ -342,7 +344,7 @@ def check(flows, ids):
                 add("security-headers", f, "missing " + ", ".join(missing))
         if resp.status_code >= 500:
             add("server-error", f, str(resp.status_code))
-        if ERROR_TEXT.search(body_text(resp) or ""):
+        if not re.search("javascript|css|image|font", resp.headers.get("content-type", "")) and ERROR_TEXT.search(body_text(resp) or ""):
             add("error-leak", f)
         leaked = sorted({k for k in body_keys(resp) if STRONG.search(k)})
         if leaked:

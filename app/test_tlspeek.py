@@ -174,6 +174,10 @@ for want in (("cert-self-signed", ""), ("weak-cipher", "RC4-SHA"),
              ("rate-limited", "Retry-After: 7"), ("beacon", "GET /poll: 6 calls every 5.0s")):
     assert want in kinds, (want, sorted(kinds))
 assert any(x["check"] == "cert-name-mismatch" for x in got)
+page_js = tflow.tflow(resp=tutils.tresp(headers=[(b"content-type", b"text/html")], content=b"<script>if(Error.captureStackTrace)Error.captureStackTrace(this)</script>"))
+java = tflow.tflow(resp=tutils.tresp(headers=[(b"content-type", b"text/plain")], content=b"boom at com.shop.Cart.add(Cart.java:42) failed"))
+got = findings.check([page_js, java], {page_js.id: 0, java.id: 1})
+assert [x["ids"] for x in got if x["check"] == "error-leak"] == [[1]], "a page that mentions captureStackTrace is not an error page"
 ws = tflow.twebsocketflow()
 ws.websocket.messages = [type(ws.websocket.messages[0])(1, True, b'{"password": "p", "mail": "a@b.co"}'),
                          type(ws.websocket.messages[0])(1, False, ('{"t": "%s"}' % jwt({"alg": "none"}, {"x": 1})).encode())]
