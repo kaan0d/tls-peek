@@ -221,7 +221,7 @@ export function render() {
   const cells = {
     pick: (f) => `<td class="c-pick"><input type="checkbox" class="pick" ${picked.has(f.id) ? "checked" : ""} aria-label="Select request"></td>`,
     star: (f) => `<td class="c-star"><button type="button" class="star" aria-pressed="${f.marked}" aria-label="Bookmark">${f.marked ? "★" : "☆"}</button></td>`,
-    method: (f) => `<td class="c-method">${esc(f.method)}</td>`,
+    method: (f) => `<td class="c-method" data-m="${esc(f.method)}">${esc(f.method)}</td>`,
     status: (f) => `<td class="c-status">${statusCell(f)}</td>`,
     host: (f) => `<td title="${esc(f.host)}">${esc(f.host)}</td>`,
     path: (f) => {

@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tls-peek</title>
 <link rel="icon" href="ui/icon.svg">
+<script>try { const t = JSON.parse(localStorage.getItem("tlspeek.theme")); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
 <link rel="stylesheet" href="ui/base.css">
 <link rel="stylesheet" href="ui/style.css">
 <script type="module" src="ui/main.js"></script>
 </head>
 <body>
 <header>
-  <h1><img src="ui/icon.svg" alt="">tls-peek</h1>
+  <h1><img src="ui/icon.svg" alt=""><span>tls-<em>peek</em></span></h1>
+  <canvas id="ribbon" role="img" aria-label="Requests over time"></canvas>
   <div class="field live-only">
     <label for="program-btn">Program</label>
     <button id="program-btn" type="button"><span>Pick program…</span></button>
@@ -29,6 +31,7 @@
   <button id="release-all" type="button" hidden>Continue all</button>
   <span id="status" class="status">Connecting…</span>
   <span class="spacer"></span>
+  <button id="palette-btn" type="button" title="Jump to anything: panels, hosts, requests, actions">Search anything <kbd>Ctrl K</kbd></button>
   <button id="compose-btn" type="button" title="Write a new request, paste a cURL command, or send a saved request">Requests…</button>
   <button id="api-btn" type="button" title="Endpoints grouped from the captured requests, with an OpenAPI download">API map</button>
   <button id="findings-btn" type="button" title="Passive security checks on the captured traffic">Findings<span id="findings-badge" class="badge" hidden></span></button>
@@ -74,10 +77,17 @@
       <thead><tr id="head"></tr></thead>
       <tbody id="rows"></tbody>
     </table>
-    <div id="empty" class="empty">No requests yet.<br>Pick a program, then close and reopen it and do the action.</div>
+    <div id="empty" class="empty"><div class="lens" aria-hidden="true"></div><p class="display">Nothing seen <em>yet</em>.</p>
+      <p>Pick a program, then close and reopen it and do the action.</p></div>
   </section>
   <section id="detail" aria-label="Request detail"></section>
 </main>
+
+<dialog id="palette" aria-label="Command palette">
+  <input id="palette-input" type="text" placeholder="Type a panel, host, request or action…" autocomplete="off" aria-label="Command palette" role="combobox" aria-controls="palette-list" aria-expanded="true">
+  <ul id="palette-list" role="listbox"></ul>
+  <footer><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></footer>
+</dialog>
 
 <dialog id="picker" aria-labelledby="picker-title">
   <div class="pick-head">

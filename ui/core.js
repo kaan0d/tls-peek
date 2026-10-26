@@ -22,6 +22,26 @@ export const S = {
   findings: [],      // last result of /api/findings, for the badge and the per-request chips
 };
 
+// Numbers in the summary tiles count up to their value, and only when the value changed since the last draw.
+const shownBefore = new Map();
+export function countUp(root, scope) {
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  root.querySelectorAll(".tile").forEach((tile) => {
+    const b = tile.querySelector("b"), key = scope + tile.querySelector("span").textContent;
+    if (!b || !/^\d+$/.test(b.textContent)) return;
+    const to = Number(b.textContent), from = shownBefore.get(key) ?? 0;
+    shownBefore.set(key, to);
+    if (calm || from === to) return;
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min((now - t0) / 480, 1);
+      b.textContent = Math.round(from + (to - from) * (1 - (1 - k) ** 3));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
 export function toast(text, ms = 7000) {  // a short note that fades by itself; screen readers get it as a status
   document.querySelector(".toast")?.remove();
   const el = Object.assign(document.createElement("div"), { className: "toast", textContent: text });

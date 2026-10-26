@@ -1,5 +1,5 @@
 // Stats panel for the requests currently shown.
-import { $, S, api, esc, fmtMs, fmtSize, kv, refusal } from "./core.js";
+import { $, S, api, countUp, esc, fmtMs, fmtSize, kv, refusal } from "./core.js";
 import { closeDetail } from "./detail.js";
 import { TYPES, filter, render, typeOf, visible } from "./list.js";
 
@@ -74,6 +74,7 @@ export function renderStats() {
       <td>${esc([...h.tls].join(", "))}</td><td>${esc([...h.http].join(", "))}</td></tr>`).join("")}
     ${S.rejected.filter((r) => !hosts.has(r.host)).map((r) => `<tr class="rejected" title="No traffic decrypted: the program refused the capture certificate">
       <td>${esc(r.host)}</td><td colspan="9" class="err">${refusal(r)} (pinned, or started before the capture)${r.passed ? `; passed through undecrypted ×${r.passed}` : ""}</td></tr>`).join("")}</tbody></table></div>${domainsHtml()}`;
+  countUp($("#detail"), "stats");
   $("#stats-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll("tr[data-host]").forEach((tr) => tr.addEventListener("click", () => {
     filter.host = tr.dataset.host;

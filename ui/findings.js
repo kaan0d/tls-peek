@@ -1,5 +1,5 @@
 // Findings panel: passive checks over the captured traffic (nothing is sent).
-import { $, S, api, esc, post } from "./core.js";
+import { $, S, api, countUp, esc, post } from "./core.js";
 import { closeDetail, refreshChips, select } from "./detail.js";
 import { render } from "./list.js";
 
@@ -58,13 +58,14 @@ export async function renderFindings() {
     </div>`;
   };
   $("#detail").innerHTML = `
-    <div class="bar"><b>Findings</b><span class="muted">passive checks on all captured requests; nothing is sent</span>
+    <div class="bar"><b>Findings</b><span class="muted">passive checks; nothing is sent</span>
       <span class="spacer"></span><button type="button" id="findings-save" title="Findings as JSON: check, host, detail, request ids, times. No secret values.">Download JSON</button>
       <button type="button" id="findings-close">Close</button></div>
     <div class="tiles">${SEVERITIES.map(tile).join("")}</div>
     ${error ? `<p class="hint err">${esc(error)}</p>` : ""}
     ${active.filter(visibleNow).map(card).join("") || `<div class="empty">${shown.size ? "Nothing at this level." : `Nothing found in ${S.flows.size} requests.`}</div>`}
     ${muted.length ? `<h3>Dismissed (${muted.length}) <small>still checked, not counted above</small></h3>${muted.filter(visibleNow).map(card).join("")}` : ""}`;
+  countUp($("#detail"), "findings");
   $("#findings-close").addEventListener("click", closeDetail);
   $("#detail").querySelectorAll(".f-ids button[data-id]").forEach((b) => b.addEventListener("click", () => select(Number(b.dataset.id))));
   $("#detail").querySelectorAll(".tile").forEach((b) => b.addEventListener("click", () => {

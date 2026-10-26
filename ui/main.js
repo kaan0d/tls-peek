@@ -8,6 +8,8 @@ import "./stats.js";
 import "./compare.js";
 import "./compose.js";
 import "./export.js";
+import "./ribbon.js";
+import "./palette.js";
 
 let program = "";
 let paused = false;

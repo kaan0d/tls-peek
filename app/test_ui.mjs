@@ -56,6 +56,17 @@ if (await page.$eval("#detail", (d) => d.scrollWidth > d.clientWidth + 1)) throw
 await page.click("#export");  // the export says what it masked
 await page.click("#ex-go");
 await page.waitForSelector('.toast:has-text("masked")');
+await page.keyboard.press("Escape");  // the command palette: Ctrl K, type, Enter runs the first match
+await page.keyboard.press("Control+k");
+await page.waitForSelector("dialog#palette[open]");
+await page.keyboard.type("theme");
+await page.keyboard.press("Enter");
+await page.waitForFunction(() => ["light", "dark"].includes(document.documentElement.dataset.theme));
+await page.keyboard.press("Control+k");
+await page.keyboard.type("api map");
+await page.keyboard.press("Enter");
+await page.waitForSelector("#ep-host");
+if (!(await page.$eval("#ribbon", (c) => c.width > 0))) throw new Error("the ribbon was not drawn");
 await page.waitForTimeout(500);  // late fetches (Raw tab) finish
 await browser.close();
 if (errors.length) throw new Error(`script errors:\n${errors.join("\n")}`);

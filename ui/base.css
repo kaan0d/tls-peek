@@ -1,27 +1,79 @@
-/* Colours and resets shared by the start page and the capture UI.
-   Neutrals are tinted toward the accent hue (255) so greys feel like one family; severity colours share
-   one lightness per theme so no level shouts louder than its meaning. */
+/* Look shared by the start page and the capture UI: a dark "ink" surface with a soft aurora behind frosted glass,
+   one mint signal colour, violet for TLS, and three typefaces that ship with the app (nothing is fetched).
+   Neutrals lean toward violet-blue (hue 275). Light theme: warm paper, deeper teal. */
+@font-face { font-family: "Geist"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-latin-wght-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Geist"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-latin-ext-wght-normal.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Geist Mono"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-mono-latin-wght-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Geist Mono"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-mono-latin-ext-wght-normal.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: normal; font-display: swap; src: url(fonts/instrument-serif-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: italic; font-display: swap; src: url(fonts/instrument-serif-latin-400-italic.woff2) format("woff2"); }
+
 :root {
-  --bg: oklch(97.4% 0.004 255); --panel: oklch(99.4% 0.002 255); --line: oklch(91.5% 0.006 255);
-  --text: oklch(25% 0.014 255); --muted: oklch(52% 0.016 255);
-  --accent: oklch(54% 0.19 262); --ok: oklch(55% 0.13 155); --warn: oklch(60% 0.125 72); --bad: oklch(54% 0.18 25);
-  --violet: oklch(58% 0.14 300); --sel: oklch(94.6% 0.03 262);
-  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --mono: "Cascadia Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
-  --radius: 6px; --ease: cubic-bezier(.2, .7, .2, 1);
+  color-scheme: dark;
+  --bg: oklch(15.5% 0.022 275); --panel: oklch(22% 0.024 275 / .66); --panel-solid: oklch(20.5% 0.024 275);
+  --line: oklch(100% 0 0 / .085); --line-strong: oklch(100% 0 0 / .17);
+  --text: oklch(95.5% 0.008 275); --muted: oklch(71% 0.02 275);
+  --accent: oklch(84% 0.165 165); --on-accent: oklch(20% 0.04 165);
+  --ok: oklch(82% 0.16 155); --warn: oklch(83% 0.14 82); --bad: oklch(71% 0.19 22); --violet: oklch(75% 0.15 295);
+  --sel: oklch(84% 0.165 165 / .12); --glow: oklch(84% 0.165 165 / .32);
+  --aurora-a: oklch(84% 0.165 165 / .13); --aurora-b: oklch(70% 0.17 295 / .16);
+  --shadow: 0 1px 0 oklch(100% 0 0 / .05) inset, 0 12px 40px oklch(0% 0 0 / .35);
+  --ui: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", "Cascadia Mono", ui-monospace, Consolas, monospace;
+  --display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --radius: 10px; --radius-lg: 16px; --ease: cubic-bezier(.2, .7, .2, 1);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: oklch(19% 0.01 255); --panel: oklch(22.5% 0.011 255); --line: oklch(31% 0.013 255);
-    --text: oklch(92% 0.006 255); --muted: oklch(67% 0.015 255);
-    --accent: oklch(72% 0.13 262); --ok: oklch(73% 0.14 155); --warn: oklch(78% 0.125 80); --bad: oklch(71% 0.15 25);
-    --violet: oklch(72% 0.12 300); --sel: oklch(30% 0.045 262);
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: oklch(96.4% 0.012 92); --panel: oklch(100% 0 0 / .72); --panel-solid: oklch(99.2% 0.004 92);
+  --line: oklch(25% 0.03 275 / .1); --line-strong: oklch(25% 0.03 275 / .2);
+  --text: oklch(22% 0.025 275); --muted: oklch(47% 0.025 275);
+  --accent: oklch(50% 0.115 175); --on-accent: oklch(99% 0.01 175);
+  --ok: oklch(48% 0.13 155); --warn: oklch(54% 0.12 70); --bad: oklch(51% 0.19 25); --violet: oklch(52% 0.16 295);
+  --sel: oklch(50% 0.115 175 / .1); --glow: oklch(50% 0.115 175 / .22);
+  --aurora-a: oklch(80% 0.12 165 / .28); --aurora-b: oklch(78% 0.12 295 / .22);
+  --shadow: 0 1px 0 oklch(100% 0 0 / .8) inset, 0 10px 30px oklch(30% 0.05 275 / .1);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: oklch(96.4% 0.012 92); --panel: oklch(100% 0 0 / .72); --panel-solid: oklch(99.2% 0.004 92);
+    --line: oklch(25% 0.03 275 / .1); --line-strong: oklch(25% 0.03 275 / .2);
+    --text: oklch(22% 0.025 275); --muted: oklch(47% 0.025 275);
+    --accent: oklch(50% 0.115 175); --on-accent: oklch(99% 0.01 175);
+    --ok: oklch(48% 0.13 155); --warn: oklch(54% 0.12 70); --bad: oklch(51% 0.19 25); --violet: oklch(52% 0.16 295);
+    --sel: oklch(50% 0.115 175 / .1); --glow: oklch(50% 0.115 175 / .22);
+    --aurora-a: oklch(80% 0.12 165 / .28); --aurora-b: oklch(78% 0.12 295 / .22);
+    --shadow: 0 1px 0 oklch(100% 0 0 / .8) inset, 0 10px 30px oklch(30% 0.05 275 / .1);
   }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { margin: 0; background: var(--bg); color: var(--text); }
-button { transition: border-color .12s var(--ease), background-color .12s var(--ease), color .12s var(--ease); }
-button:hover:not(:disabled) { border-color: var(--accent); }
+html { background: var(--bg); }
+body {
+  margin: 0; color: var(--text); min-height: 100%;
+  background:
+    radial-gradient(900px 520px at 6% -12%, var(--aurora-a), transparent 62%),
+    radial-gradient(820px 560px at 104% -6%, var(--aurora-b), transparent 58%),
+    radial-gradient(1000px 500px at 50% 130%, color-mix(in oklch, var(--violet) 9%, transparent), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+/* film grain: keeps big gradients from banding and gives the glass something to blur */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50; opacity: .045; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+::selection { background: color-mix(in oklch, var(--accent) 35%, transparent); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+button { transition: border-color .15s var(--ease), background-color .15s var(--ease), color .15s var(--ease), box-shadow .2s var(--ease), transform .12s var(--ease); }
+button:hover:not(:disabled) { border-color: color-mix(in oklch, var(--accent) 60%, var(--line-strong)); }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

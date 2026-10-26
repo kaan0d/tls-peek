@@ -9,6 +9,7 @@ administrator rights.
 > credentials and personal data: keep them private and delete them when done.
 
 ## Features
+- **Interface:** dark or light (follows Windows, switchable), a request ribbon showing traffic over the last minute, and a command palette on `Ctrl K` (`/` focuses search) for panels, hosts, requests and actions. Fonts (Geist, Instrument Serif, OFL) ship with the app; nothing is loaded from the internet.
 - **Start page:** start a capture, open, download or delete saved sessions, and remove a leftover certificate.
 - **Per-program capture:** pick a running app (or type an `.exe` name); only its traffic is intercepted.
 - **Live control:** switch program and host filter, pause/resume, stop, all from the UI or the tray icon.
@@ -130,5 +131,8 @@ app\
 ui\
   home.html            start page
   index.html           capture UI, with style.css and one ES module per panel
-  base.css             colours shared by both pages
+  base.css             colours, fonts and background shared by both pages
+  ribbon.js            traffic ribbon in the toolbar
+  palette.js           command palette
+  fonts\               Geist, Geist Mono, Instrument Serif (SIL OFL, licences included)
 ```

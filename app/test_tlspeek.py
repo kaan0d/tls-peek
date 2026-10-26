@@ -723,6 +723,13 @@ try:
     assert any(x["name"] == fake.name for x in st["sessions"]) and st["child"] is None, st
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/base.css") as r:  # the start page shares the UI colours
         assert r.headers["Content-Type"].startswith("text/css") and r.read() == (root / "ui/base.css").read_bytes()
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/fonts/geist-latin-wght-normal.woff2") as r:  # the fonts ship with the app
+        assert r.headers["Content-Type"] == "font/woff2" and r.read(4) == b"wOF2"
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/ui/fonts/..%2Fbase.css")
+        raise AssertionError("path tricks must not reach files")
+    except urllib.error.HTTPError as e:
+        assert e.code == 404
     assert post("/api/open", {"name": "../settings.json"})[0] == 400
     assert post("/api/delete", {"name": "..\tlspeek.py"})[0] == 400
     status, st = post("/api/open", {"name": fake.name})
